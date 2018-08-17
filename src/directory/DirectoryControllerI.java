@@ -1,9 +1,11 @@
 package directory;
 
 public interface DirectoryControllerI {
-	public Directory createDir(boolean root, Directory parent);
-	public boolean deleteDir(String name);
-	public boolean moveDir(String name);
+	public Directory createDir(String name);
+	public boolean deleteDir(String path);
+	public boolean moveDir(String dir_str, String new_path);
+	public String currentPath();
+	public boolean renameDir(String path, String name);
 	
 	
 }

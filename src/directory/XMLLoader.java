@@ -48,7 +48,7 @@ public class XMLLoader {
 			}else {
 				DirectoryAbst parent = loadDirectoryFromFile(path, parent_code);
 				//TODO find directory
-				directory = new Directory(name, parent, code);
+				directory = new Directory(name, parent);
 			}
 			
 			
@@ -86,12 +86,12 @@ public class XMLLoader {
 		rootEle.setAttributeNode(name);
 		
 		Attr code = doc.createAttribute("Code");
-		code.setValue(Integer.toString(directory.code));
+		code.setValue(directory.id.toString());
 		rootEle.setAttributeNode(code);
 		
 		if(!directory.root) {
 			Attr parent_code = doc.createAttribute("Parent");
-			parent_code.setValue(Integer.toString(directory.parentDir.code));
+			parent_code.setValue(directory.parentDir.id.toString());
 			rootEle.setAttributeNode(parent_code);
 		}
 		
@@ -101,11 +101,11 @@ public class XMLLoader {
 		Attr dirssize = doc.createAttribute("Size");
 		dirssize.setValue(Integer.toString(directory.containedDirectories.size()));
 		subdirsEle.setAttributeNode(dirssize);
-		for(Integer dir_code:directory.containedDirectories.keySet()) {
+		for(String dir_code:directory.containedDirectories.keySet()) {
 			Element dirEle = doc.createElement("SubDirectory");
 			subdirsEle.appendChild(dirEle);
 			Attr sub_code = doc.createAttribute("Code");
-			sub_code.setValue(Integer.toString(dir_code));
+			sub_code.setValue(dir_code);
 			dirEle.setAttributeNode(sub_code);
 		}
 		
@@ -138,14 +138,13 @@ public class XMLLoader {
 	
 	public void DebugPrintDirectory(DirectoryAbst directory) {
 		System.out.println("IsRoot: " + directory.root);
-		System.out.println("Code: " + directory.code);
+		System.out.println("Code: " + directory.id.toString());
 		if(directory instanceof DirectoryRoot) {
-			System.out.println("total directory number: " + ((DirectoryRoot)directory).total_number_directories);
 		}else {
-			System.out.println("Parent: " + directory.parentDir.code);
+			System.out.println("Parent: " + directory.parentDir.id.toString());
 		}
 		System.out.println("SubDirectories: ");
-		for(Integer code: directory.containedDirectories.keySet()) {
+		for(String code: directory.containedDirectories.keySet()) {
 			System.out.println(code);
 		}
 		
