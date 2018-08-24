@@ -3,6 +3,9 @@ package directory;
 import java.util.TreeMap;
 import java.util.UUID;
 
+import nio.NIOCommandHeaderDirOp;
+import nio.NIOCommandType;
+
 public class DirectoryController implements DirectoryControllerI{
 	//implement red black tree stored in memory to store directory structure <String id, directory object>
     TreeMap<UUID, DirectoryAbst> directories;
@@ -164,6 +167,7 @@ public class DirectoryController implements DirectoryControllerI{
 		ret = "/"+ret;
 		return ret;
 	}
+	
 
 	@Override
 	public boolean renameDir(String path, String name) {
@@ -183,6 +187,37 @@ public class DirectoryController implements DirectoryControllerI{
 		dir.parentDir.containedDirectories.put(name, dir);
 		return true;
 	}
+
+	@Override
+	public boolean processRemoteCommand(NIOCommandHeaderDirOp cmdH) {
+		if(cmdH.type == NIOCommandType.CREATE_DIR) {
+			//arg1: parent dir 
+			//arg2: dir name
+			String current = currentPath();
+			if(setCurrentDir(cmdH.dir_str)) {
+				createDir(cmdH.destination);
+			}else {
+				return false;
+			}
+			setCurrentDir(current);
+		}else if(cmdH.type == NIOCommandType.REMOVE_DIR) {
+			//arg1: dir to remove
+			return deleteDir(cmdH.dir_str);
+		}else if(cmdH.type == NIOCommandType.MOVE_DIR) {
+			//arg1: dir to move
+			//arg2: destination
+			return this.moveDir(cmdH.dir_str, cmdH.destination);
+		}else if(cmdH.type == NIOCommandType.RENAME_DIR) {
+			//arg1: dir to rename
+			//arg2: name
+			return this.renameDir(cmdH.dir_str, cmdH.destination);
+		}else {
+			return false;
+		}
+		return true;
+	}
+	
+	
 	
 	
 	

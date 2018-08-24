@@ -1,18 +1,19 @@
 package nio;
 
 import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 
-public class NIOServer implements Runnable{
-	public static NIOServer server = new NIOServer();
+public class NIOServerNameNode implements Runnable{
+	public static NIOServerNameNode server = new NIOServerNameNode();
 	public ServerSocketChannel serverChannel;
-	public SocketChannel sendClientChannel;
+	public InetSocketAddress[] datanode_addresses;
 	public Selector selector;
-	public InetSocketAddress clientAddress = new InetSocketAddress("localhost",1002);
-	private NIOServer() {
+	protected NIOServerNameNode() {
 		
 	}
 	
@@ -26,9 +27,7 @@ public class NIOServer implements Runnable{
 			
 			int ops = serverChannel.validOps();
 			
-			sendClientChannel = SocketChannel.open(clientAddress);
-			
-			SelectionKey ky = serverChannel.register(selector, ops, null);
+			serverChannel.register(selector, ops, null);
 			
 		}catch(Exception e) {
 			e.printStackTrace();
@@ -38,7 +37,14 @@ public class NIOServer implements Runnable{
 	}
 	
 	public void syncSelect() {
-		
+		Thread select = new Thread(server);
+		select.start();
+	}
+	
+	private ByteBuffer processRead(ByteBuffer buffer) {
+		buffer.flip();
+		ByteBuffer ret = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());
+		return ret;
 	}
 
 	@Override
@@ -47,15 +53,25 @@ public class NIOServer implements Runnable{
 			try {
 				selector.select();
 				for(SelectionKey key: selector.selectedKeys()) {
-					if(key.isAcceptable()) {
+					if(!key.isValid()) {
+						System.err.println("invalid keys");
+					}else if(key.isAcceptable()) {
 						SocketChannel clientChannel = serverChannel.accept();
 						clientChannel.configureBlocking(false);
 						clientChannel.register(selector, SelectionKey.OP_READ);
+						Socket info = clientChannel.socket();
 						
-					}else if(key.isConnectable()) {
-					
+						System.out.println("New Connected Channel: ");
+						System.out.println(info.getRemoteSocketAddress().toString());
 						
 					}else if(key.isReadable()) {
+						//first read a commandMsg object
+						SocketChannel channel = (SocketChannel)key.channel();
+						ByteBuffer buffer = ByteBuffer.allocate(1024);
+						channel.read(buffer);
+						ByteBuffer commandHeaderBuffer = processRead(buffer);
+						//buffer.remaining() = length
+						buffer.clear();
 						
 					}
 				}
@@ -68,3 +84,4 @@ public class NIOServer implements Runnable{
 	}
 	
 }
+
