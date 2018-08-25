@@ -16,13 +16,15 @@ public class NIOFileReceivingTask implements Runnable{
 	public RandomAccessFile aFile;
 	public ByteBufferHeaderInfo header_info;
 	public String header_str;
+	public boolean isDatanode;
 	
 	public NIOFileReceivingTask(ConcurrentHashMap<SocketChannel, BlockingQueue<ByteBuffer>> bufferQueues,
-			SocketChannel channel, ByteBuffer meta) {
+			SocketChannel channel, ByteBuffer meta, boolean isDatanode) {
 		this.receivingBufferQueues = bufferQueues;
 		this.queue = bufferQueues.get(channel);
 		this.receiveChannel = channel;
 		this.meta_buffer = meta;
+		this.isDatanode = isDatanode;
 	}
 	
 	@Override
@@ -49,7 +51,12 @@ public class NIOFileReceivingTask implements Runnable{
 			if(!(cmdH instanceof NIOCommandHeaderReceiveFile)) {
 				return;
 			}
-			aFile = new RandomAccessFile(((NIOCommandHeaderReceiveFile)cmdH).file_id.toString(), "rw");
+			if(isDatanode) {
+				aFile = new RandomAccessFile(((NIOCommandHeaderReceiveFile)cmdH).file_id.toString(), "rw");
+			}else {
+				aFile = new RandomAccessFile(((NIOCommandHeaderReceiveFile)cmdH).file_name, "rw");
+			}
+			
 			FileChannel fileChannel = aFile.getChannel();
 			
 			fileChannel.write(remaining_buffer);

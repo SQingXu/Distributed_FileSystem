@@ -12,6 +12,7 @@ import java.util.Iterator;
 
 public class FileServer implements Runnable {
 	public static FileServer server = new FileServer();
+	public boolean datanode;
 	public InetSocketAddress namenode_address;
 	public Selector selector;
 	public ServerSocketChannel serverChannel;
@@ -19,6 +20,7 @@ public class FileServer implements Runnable {
 	public SocketChannel nameChannel;
 	public boolean connected = false;
 	ByteBuffer buffer;
+	public String file_dir = ""; //for datanode
 	
 	public Thread read_thread;
 	public Thread select_thread;
@@ -29,7 +31,7 @@ public class FileServer implements Runnable {
 	public void init(String host, int port) {
 		try {
 			//first start reading thread
-			reader = new CommandReaderFileServer(server, 1024);
+			reader = new CommandReaderFileServer(server, 1024, 4);
 			read_thread = new Thread(reader);
 			read_thread.start();
 			
@@ -46,6 +48,7 @@ public class FileServer implements Runnable {
 			connected = nameChannel.connect(namenode_address);
 			if(connected) {
 				System.out.println("successfully connected to namenode in first attempt");
+				nameChannel.register(selector, SelectionKey.OP_READ);
 			}else {
 				nameChannel.register(selector, SelectionKey.OP_CONNECT);
 			}
@@ -90,8 +93,11 @@ public class FileServer implements Runnable {
 						SocketChannel channel = (SocketChannel)key.channel();
 						
 						int num_bytes = channel.read(buffer);
-						if(num_bytes <= 0 && channel != nameChannel) {
-							
+						
+						if(num_bytes <= 0 && !channel.equals(nameChannel)) {
+							//file receiving channel if the receive ended, close channel
+							channel.close();
+							continue;
 						}
 						//flip and duplicate
 						buffer.flip();
@@ -102,7 +108,6 @@ public class FileServer implements Runnable {
 						ByteBufferWSource dBufferSource = new ByteBufferWSource(dBuffer,channel);
 						reader.addBufferWSource(dBufferSource);
 						
-						//buffer.remaining() = length
 						buffer.clear();
 						
 					}else if(key.isConnectable()) {

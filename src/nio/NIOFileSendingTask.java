@@ -15,11 +15,13 @@ public class NIOFileSendingTask implements Runnable{
 	public SocketChannel sendChannel;
 	public RandomAccessFile aFile;
 	public UUID file_id;
+	public String file_name;
 	
-	public NIOFileSendingTask(String file_path,UUID file_id, InetSocketAddress address) {
+	public NIOFileSendingTask(String file_path, UUID file_id, InetSocketAddress address, String file_name) {
 		this.local_path = file_path;
 		this.address = address;
 		this.file_id = file_id;
+		this.file_name = file_name;
 	}
 
 	@Override
@@ -34,7 +36,9 @@ public class NIOFileSendingTask implements Runnable{
 			FileChannel inChannel = aFile.getChannel();
 			ByteBuffer buffer = ByteBuffer.allocate(1024);
 			//first send a command header
-			NIOCommandHeaderReceiveFile header = new NIOCommandHeaderReceiveFile(file.getName(),file_id);
+			NIOCommandHeaderReceiveFile header;
+			header = new NIOCommandHeaderReceiveFile(file_name,file_id);
+			
 			String header_str = FileHeaderEncodingHelper.addLengthHeader(NIOSerializer.toString(header));
 			ByteBuffer header_buffer = ByteBuffer.wrap(header_str.getBytes());
 			int header_length = sendChannel.write(header_buffer);

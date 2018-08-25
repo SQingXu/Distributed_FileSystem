@@ -12,6 +12,11 @@ public class CommandReaderNameNode implements Runnable{
 	public CommandReaderNameNode(int queue_size) {
 		buffer_queue = new ArrayBlockingQueue<>(queue_size);
 	}
+	
+	public void addBufferWSource(ByteBufferWSource buffer_source) throws InterruptedException{
+		buffer_queue.put(buffer_source);
+		return;
+	}
 
 	@Override
 	public void run() {
@@ -22,7 +27,11 @@ public class CommandReaderNameNode implements Runnable{
 					ByteBuffer buffer = buffer_source.buffer;
 					String command_str = new String(buffer.array(),buffer.position(), buffer.remaining());
 					NIOCommandHeader cmdH = (NIOCommandHeader)NIOSerializer.FromString(command_str);
-					boolean result = opProcessor(cmdH);
+					if(!opProcessor(cmdH)) {
+						System.err.println("error in processing command");
+					}else {
+						//buffer_source.channel.is
+					}
 					
 				} catch (Exception e) {
 					e.printStackTrace();

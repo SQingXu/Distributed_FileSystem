@@ -7,18 +7,28 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.Arrays;
 
 public class NIOServerNameNode implements Runnable{
 	public static NIOServerNameNode server = new NIOServerNameNode();
 	public ServerSocketChannel serverChannel;
 	public InetSocketAddress[] datanode_addresses;
 	public Selector selector;
+	public CommandReaderNameNode reader;
+	
+	public Thread read_thread;
+	public Thread select_thread;
+	
 	protected NIOServerNameNode() {
 		
 	}
 	
 	public void init(String host, int port) {
 		try {
+			reader = new CommandReaderNameNode(1024);
+			read_thread = new Thread(reader);
+			read_thread.start();
+			
 			selector = Selector.open();
 			serverChannel = ServerSocketChannel.open();
 			InetSocketAddress address = new InetSocketAddress(host, port);
@@ -37,15 +47,10 @@ public class NIOServerNameNode implements Runnable{
 	}
 	
 	public void syncSelect() {
-		Thread select = new Thread(server);
-		select.start();
+		select_thread = new Thread(server);
+		select_thread.start();
 	}
 	
-	private ByteBuffer processRead(ByteBuffer buffer) {
-		buffer.flip();
-		ByteBuffer ret = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());
-		return ret;
-	}
 
 	@Override
 	public void run() {
@@ -69,7 +74,15 @@ public class NIOServerNameNode implements Runnable{
 						SocketChannel channel = (SocketChannel)key.channel();
 						ByteBuffer buffer = ByteBuffer.allocate(1024);
 						channel.read(buffer);
-						ByteBuffer commandHeaderBuffer = processRead(buffer);
+						buffer.flip();
+						ByteBuffer ret = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());
+						
+						ByteBuffer mBuffer = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());;
+						byte[] anArrayCopy = Arrays.copyOfRange(mBuffer.array(), mBuffer.position(), mBuffer.limit());
+						ByteBuffer dBuffer = ByteBuffer.wrap(anArrayCopy,0, mBuffer.remaining());
+						
+						ByteBufferWSource dBufferSource = new ByteBufferWSource(dBuffer,channel);
+						reader.addBufferWSource(dBufferSource);
 						//buffer.remaining() = length
 						buffer.clear();
 						
