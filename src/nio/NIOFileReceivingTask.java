@@ -7,6 +7,11 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
+import niocmd.NIOCommand;
+import niocmd.NIOCommandFactory;
+import niocmd.NIOCommandType;
+import niocmd.ReceiveFileObject;
+
 public class NIOFileReceivingTask implements Runnable{
 	public BlockingQueue<ByteBuffer> queue;
 	public ConcurrentHashMap<SocketChannel, BlockingQueue<ByteBuffer>> receivingBufferQueues;
@@ -47,14 +52,16 @@ public class NIOFileReceivingTask implements Runnable{
 			ByteBuffer remaining_buffer = ByteBuffer.wrap(meta_buffer.array(),
 					start_pos, meta_buffer.remaining()-start_pos);
 			
-			NIOCommandHeader cmdH = (NIOCommandHeader)NIOSerializer.FromString(header_str);
-			if(!(cmdH instanceof NIOCommandHeaderReceiveFile)) {
+			NIOCommand cmd = (NIOCommand)NIOSerializer.FromString(header_str);
+			if(!cmd.type.equals(NIOCommandType.RECEIVE_FILE_DATA)) {
+				System.out.println("received file command type incorrect");
 				return;
 			}
+			ReceiveFileObject rfo = NIOCommandFactory.fromCmdReceiveFile(cmd); 
 			if(isDatanode) {
-				aFile = new RandomAccessFile(((NIOCommandHeaderReceiveFile)cmdH).file_id.toString(), "rw");
+				aFile = new RandomAccessFile(rfo.file_id.toString(), "rw");
 			}else {
-				aFile = new RandomAccessFile(((NIOCommandHeaderReceiveFile)cmdH).file_name, "rw");
+				aFile = new RandomAccessFile(rfo.file_name, "rw");
 			}
 			
 			FileChannel fileChannel = aFile.getChannel();
@@ -64,7 +71,7 @@ public class NIOFileReceivingTask implements Runnable{
 				fileChannel.write(queue.take());
 			}
 			fileChannel.close();
-			System.out.println("finish receiving file: " + ((NIOCommandHeaderReceiveFile)cmdH).file_name);
+			System.out.println("finish receiving file: " + rfo.file_name);
 			
 		}catch(Exception e){
 			e.printStackTrace();

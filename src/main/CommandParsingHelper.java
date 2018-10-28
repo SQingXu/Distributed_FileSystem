@@ -1,12 +1,13 @@
 package main;
 
-import nio.NIOCommandHeader;
-import nio.NIOCommandHeaderDirOp;
-import nio.NIOCommandType;
+import java.util.ArrayList;
+import java.util.List;
 
-enum CmdType{
-	PWD, CD, LS, MV, RN, RM, MKDIR, UPLOAD, DOWNLOAD
-}
+
+import niocmd.NIOCommand;
+import niocmd.NIOCommandType;
+
+
 
 public class CommandParsingHelper {
 	/* 
@@ -20,59 +21,114 @@ public class CommandParsingHelper {
 	 * upload: upload files from local
 	 * download: download files on the server 
 	 * */ 
-	public static NIOCommandHeader parseCmdString(String cmdStr) throws InvalidCommandException{
-		int start = 0;
-		int end = recognizeDivider(cmdStr, start);
-		CmdType cmd = parseFirstPart(cmdStr, end);
-		if(cmd.equals(CmdType.PWD)) {
-			return new NIOCommandHeaderDirOp(NIOCommandType.PRINT_WORKING_DIRECTORY,"");
+	public static NIOCommand parseCmdString(String cmdStr) throws InvalidCommandException{
+		List<String> argList = separateString(cmdStr);
+		NIOCommandType cmdType = parseFirstPart(argList.get(0));
+		String[] args;
+		if((cmdType.equals(NIOCommandType.PRINT_WORKING_DIRECTORY) || cmdType.equals(NIOCommandType.LIST_WORKING_DIRECTORY) &&
+				argList.size() == 1)) {
+			args = new String[1];
+			args[0] = ".";
+			return new NIOCommand(cmdType,args) ;
+		}else if((cmdType.equals(NIOCommandType.CREATE_DIR) || cmdType.equals(NIOCommandType.LIST_WORKING_DIRECTORY) 
+				|| cmdType.equals(NIOCommandType.REMOVE_DIR_FILE) || cmdType.equals(NIOCommandType.DOWNLOAD_FILE_NAME) 
+				|| cmdType.equals(NIOCommandType.UPLOAD_FILE_NAME) || cmdType.equals(NIOCommandType.SET_CURRENT_DIRECTORY))
+				&& argList.size() == 2) {
+			args = new String[1];
+			args[0] = argList.get(1);
+			return new NIOCommand(cmdType, args);
+		}else if((cmdType.equals(NIOCommandType.RENAME_DIR_FILE) || cmdType.equals(NIOCommandType.MOVE_DIR_FILE)
+				|| cmdType.equals(NIOCommandType.DOWNLOAD_FILE_NAME) || cmdType.equals(NIOCommandType.UPLOAD_FILE_NAME)) 
+				&& argList.size() == 3) {
+			args = new String[2];
+			args[0] = argList.get(1);
+			args[1] = argList.get(2);
+			return new NIOCommand(cmdType, args);
+		}else {
+			throw new InvalidCommandException("incorrect number of arguments");
 		}
-		//ls can have either 1 or 0 path argument
-		if(end == cmdStr.length() && cmd.equals(CmdType.LS)) {
-			return new NIOCommandHeaderDirOp(NIOCommandType.LIST_WORKING_DIRECTORY, ".");
-		}else if(end == cmdStr.length()) {
-			throw new InvalidCommandException("command missing argument");
-		}
 		
-		start = end+1;
-		
-		
-		return null;
 	}
 	
-	private static int recognizeDivider(String cmdStr, int start) {
+	public static List<String> separateString(String cmdStr) {
+		List<String> ret = new ArrayList<String>();
 		char pre_ch = 'n';
-		for(int i = start; i < cmdStr.length(); i++) {
+		char pre_pre_ch = 'n';
+		int start = 0;
+		int end = 0;
+		for(int i = 0; i < cmdStr.length(); i++) {
 			char ch = cmdStr.charAt(i);
 			if(ch == ' ' && pre_ch != '\\') {
-				return i;
+				end = i;
+				if(start < end && (pre_ch != ' ' || (pre_ch == ' ' && pre_pre_ch == '\\'))) {
+					//the sub-string has length and the there are consecutive space
+					ret.add(cmdStr.substring(start, end));
+				}
+				start = end+1;
 			}
+			pre_pre_ch = pre_ch;
 			pre_ch = ch;
+			
 		}
-		return cmdStr.length();
+		if(start < cmdStr.length()-1) {
+			ret.add(cmdStr.substring(start,cmdStr.length()));
+		}
+		removeForwardSlash(ret);
+		return ret;
 	}
 	
-	private static CmdType parseFirstPart(String cmdStr, int end) throws InvalidCommandException{
-		String sub_head = cmdStr.substring(0, end);
+	private static void removeForwardSlash(List<String> sub_strs) {
+		for(int j = 0; j < sub_strs.size(); j++) {
+			String sub = sub_strs.get(j);
+			char pre_ch = 'l';
+			int start = 0;
+			int end = 0;
+			boolean changed = false;
+			String new_sub = "";
+			for(int i = 0; i < sub.length(); i++) {
+				char ch = sub.charAt(i);
+				if(ch == ' ' && pre_ch == '\\') {
+					//recognize a space
+					end = i-1;
+					if(start < end) {
+						new_sub += sub.substring(start, end)+' ';
+					}
+					start = i+1;
+					changed = true;
+				}
+				pre_ch = ch;
+			}
+			if(changed) {
+				if(start < sub.length()) {
+					new_sub += sub.substring(start,sub.length());
+				}
+				sub_strs.set(j, new_sub);
+			}
+		}
+	}
+	
+	
+	private static NIOCommandType parseFirstPart(String first_part) throws InvalidCommandException{
+		String sub_head = first_part;
 		switch(sub_head) {
 		case "cd":
-			return CmdType.CD;
+			return NIOCommandType.SET_CURRENT_DIRECTORY;
 		case "pwd":
-			return CmdType.PWD;
+			return NIOCommandType.PRINT_WORKING_DIRECTORY;
 		case "ls":
-			return CmdType.LS;
+			return NIOCommandType.LIST_WORKING_DIRECTORY;
 		case "mv":
-			return CmdType.MV;
+			return NIOCommandType.MOVE_DIR_FILE;
 		case "mkdir":
-			return CmdType.MKDIR;
+			return NIOCommandType.CREATE_DIR;
 		case "rn":
-			return CmdType.RN;
+			return NIOCommandType.RENAME_DIR_FILE;
 		case "rm":
-			return CmdType.RM;
+			return NIOCommandType.REMOVE_DIR_FILE;
 		case "upload":
-			return CmdType.UPLOAD;
+			return NIOCommandType.UPLOAD_FILE_NAME;
 		case "download":
-			return CmdType.DOWNLOAD;
+			return NIOCommandType.DOWNLOAD_FILE_NAME;
 		default:
 			throw new InvalidCommandException("command not recognized");
 		}

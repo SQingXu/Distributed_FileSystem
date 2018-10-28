@@ -20,12 +20,17 @@ public class FileController implements FileControllerI{
 
 	@Override
 	public boolean createFile(String path, String name) {
-		DirectoryAbst dir;
+		NameDirFileObject dfo;
 		try {
-			dir = dirSingleton.parsePath(path);
+			dfo = dirSingleton.parsePath(path);
+			if(dfo.isFile) {
+				System.out.println("the path is a file but not a directory");
+				return false;
+			}
 		}catch(Exception e) {
 			return false;
 		}
+		DirectoryAbst dir = (DirectoryAbst)dfo;
 		DFile file = new DFile(name, dir);
 		dir.containedFiles.put(name, file);
 		return true;
@@ -41,12 +46,17 @@ public class FileController implements FileControllerI{
 
 	@Override
 	public boolean deleteFile(String path, String name) {
-		DirectoryAbst dir;
+		NameDirFileObject dfo;
 		try {
-			dir = dirSingleton.parsePath(path);
+			dfo = dirSingleton.parsePath(path);
+			if(dfo.isFile) {
+				System.out.println("the path is a file but not a directory");
+				return false;
+			}
 		}catch(Exception e) {
 			return false;
 		}
+		DirectoryAbst dir = (DirectoryAbst)dfo;
 		boolean res = dir.containedFiles.containsKey(name);
 		if(!res) return false;
 		dir.containedFiles.remove(name);

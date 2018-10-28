@@ -3,8 +3,9 @@ package directory;
 import java.util.TreeMap;
 import java.util.UUID;
 
-import nio.NIOCommandHeaderDirOp;
-import nio.NIOCommandType;
+
+import niocmd.NIOCommandType;
+import niocmd.NIOCommand;
 
 public class DirectoryController implements DirectoryControllerI{
 	//implement red black tree stored in memory to store directory structure <String id, directory object>
@@ -32,11 +33,29 @@ public class DirectoryController implements DirectoryControllerI{
 		parent.containedDirectories.put(name, dir);
 		return null;
 	}
-
+	
 	@Override
-	public boolean deleteDir(String path) {
+	public boolean deleteDirFile(String path) {
 		try {
-			DirectoryAbst dir = parsePath(path);
+			NameDirFileObject o = parsePath(path);
+			if(!o.isFile) {
+				return deleteDir((DirectoryAbst)o);
+			}else {
+				return deleteFile((DFile)o);
+			}
+		}catch(Exception e){
+			e.printStackTrace();
+			return false;
+		}
+	}
+	
+	private boolean deleteFile(DFile file) {
+		file.parentDir.containedFiles.remove(file.name);
+		return true;
+	}
+
+	private boolean deleteDir(DirectoryAbst dir) {
+		try {
 			if(dir.containedDirectories.size() != 0 || dir.containedFiles.size() != 0) {
 				System.out.println("cannot remove non-empty directory");
 				return false;
@@ -56,24 +75,40 @@ public class DirectoryController implements DirectoryControllerI{
 			return false;
 		}
 	}
-
+	
 	@Override
-	public boolean moveDir(String dir_str, String new_path) {
-		DirectoryAbst dir;
+	public boolean moveDirFile(String dir_str, String new_path) {
+		NameDirFileObject o;
 		DirectoryAbst parent;
 		try {
-		    dir = parsePath(dir_str);
+			o = parsePath(dir_str);
 		}catch(Exception e) {
-			System.out.println("invalid directory");
+			e.printStackTrace();
 			return false;
 		}
 		
+		
 		try {
-			parent = parsePath(new_path);
+			parent = parseDirPath(new_path);
 		}catch(Exception e) {
 			System.out.println("invalid destination");
 			return false;
 		}
+		
+		if(o.isFile) {
+			return moveFile((DFile)o,parent);
+		}else {
+			return moveDir((DirectoryAbst)o,parent);
+		}
+	}
+	
+	private boolean moveFile(DFile file, DirectoryAbst parent) {
+		file.parentDir.containedFiles.remove(file.name);
+		parent.containedFiles.put(file.name, file);
+		return true;
+	}
+	
+	private boolean moveDir(DirectoryAbst dir, DirectoryAbst parent) {
 		
 		if(dir.root) {
 			System.out.println("cannot move root directory");
@@ -91,7 +126,7 @@ public class DirectoryController implements DirectoryControllerI{
 	
 	public boolean setCurrentDir(String path) {
 		try {
-			DirectoryAbst dir = parsePath(path);
+			DirectoryAbst dir = parseDirPath(path);
 			current_dir = dir;
 			return true;
 		}catch(Exception e) {
@@ -101,8 +136,17 @@ public class DirectoryController implements DirectoryControllerI{
 	}
 	
 	
-	public DirectoryAbst parsePath(String path) throws InValidPathException {
-		DirectoryAbst dir;
+	public DirectoryAbst parseDirPath(String path) throws InValidPathException{
+		NameDirFileObject ret = parsePath(path);
+		if(ret.isFile) {
+			throw new InValidPathException("the path point to a file not a directory");
+		}
+		return (DirectoryAbst)ret;
+	}
+	
+	
+	public NameDirFileObject parsePath(String path) throws InValidPathException {
+		NameDirFileObject dir;
 		int start = 0;
 		int end = 0; 
 		if(path.charAt(0) == '/') {
@@ -117,18 +161,21 @@ public class DirectoryController implements DirectoryControllerI{
 			if(path.charAt(i) == '/') {
 				String name = path.substring(start, end);;
 				start = i+1;
-				dir = parseOneDirectory(dir,name);
+				dir = parseOneDirectory((DirectoryAbst)dir,name);
+				if(dir.isFile) {
+					throw new InValidPathException(name + " is a file not a directory");
+				}
 			}
 		}
 		if(start < end) {
 			String name = path.substring(start);
-			dir = parseOneDirectory(dir, name);
+			dir = parseOneDirectory((DirectoryAbst)dir, name);
 		}
 		return dir;
 	}
 	
-	private DirectoryAbst parseOneDirectory(DirectoryAbst dir, String name) throws InValidPathException {
-		DirectoryAbst ret = null;
+	private NameDirFileObject parseOneDirectory(DirectoryAbst dir, String name) throws InValidPathException {
+		NameDirFileObject ret = null;
 		if(name.equals(".")) {
 			ret = dir;
 		}else if(name.equals("..")) {
@@ -140,7 +187,10 @@ public class DirectoryController implements DirectoryControllerI{
 		}else {
 			ret = dir.containedDirectories.get(name);
 			if(ret == null) {
-				throw new InValidPathException();
+				ret = dir.containedFiles.get(name);
+				if(ret == null) {
+					throw new InValidPathException();
+				}
 			}
 		}
 		return ret;
@@ -168,15 +218,29 @@ public class DirectoryController implements DirectoryControllerI{
 		return ret;
 	}
 	
-
 	@Override
-	public boolean renameDir(String path, String name) {
-		DirectoryAbst dir;
+	public boolean renameDirFile(String path, String name) {
+		NameDirFileObject o;
 		try {
-			dir = parsePath(path);
+			o = parsePath(path);
 		}catch(Exception e) {
+			e.printStackTrace();
 			return false;
 		}
+		if(o.isFile) {
+			return renameFile((DFile)o, name);
+		}else {
+			return renameDir((DirectoryAbst)o, name);
+		}
+	}
+	
+	private boolean renameFile(DFile file, String name) {
+		file.name = name;
+		return true;
+	}
+
+	
+	private boolean renameDir(DirectoryAbst dir, String name) {
 		if(dir.root) {
 			System.out.println("cannot rename root dir");
 			return false; 
@@ -189,28 +253,23 @@ public class DirectoryController implements DirectoryControllerI{
 	}
 
 	@Override
-	public boolean processRemoteCommand(NIOCommandHeaderDirOp cmdH) {
-		if(cmdH.type == NIOCommandType.CREATE_DIR) {
-			//arg1: parent dir 
-			//arg2: dir name
-			String current = currentPath();
-			if(setCurrentDir(cmdH.dir_str)) {
-				createDir(cmdH.destination);
-			}else {
-				return false;
-			}
-			setCurrentDir(current);
-		}else if(cmdH.type == NIOCommandType.REMOVE_DIR) {
+	public boolean processRemoteCommand(NIOCommand cmd) {
+		if(cmd.type == NIOCommandType.CREATE_DIR) {
+			//arg1: dir name 
+			createDir(cmd.args[0]);
+		}else if(cmd.type == NIOCommandType.REMOVE_DIR_FILE) {
 			//arg1: dir to remove
-			return deleteDir(cmdH.dir_str);
-		}else if(cmdH.type == NIOCommandType.MOVE_DIR) {
+			return deleteDirFile(cmd.args[0]);
+		}else if(cmd.type == NIOCommandType.MOVE_DIR_FILE) {
 			//arg1: dir to move
 			//arg2: destination
-			return this.moveDir(cmdH.dir_str, cmdH.destination);
-		}else if(cmdH.type == NIOCommandType.RENAME_DIR) {
+			return this.moveDirFile(cmd.args[0], cmd.args[1]);
+		}else if(cmd.type == NIOCommandType.RENAME_DIR_FILE) {
 			//arg1: dir to rename
 			//arg2: name
-			return this.renameDir(cmdH.dir_str, cmdH.destination);
+			return this.renameDirFile(cmd.args[0], cmd.args[1]);
+		}else if(cmd.type == NIOCommandType.SET_CURRENT_DIRECTORY){
+			return this.setCurrentDir(cmd.args[0]);
 		}else {
 			return false;
 		}

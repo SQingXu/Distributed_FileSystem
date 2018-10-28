@@ -5,12 +5,14 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
 import directory.DirectoryController;
+import niocmd.NIOCommand;
 
-public class CommandReaderNameNode implements Runnable{
+public class NameNodeServerReader implements Runnable{
 	public BlockingQueue<ByteBufferWSource> buffer_queue;
-	
-	public CommandReaderNameNode(int queue_size) {
+	public ServerWriter writer;
+	public NameNodeServerReader(int queue_size, ServerWriter writer) {
 		buffer_queue = new ArrayBlockingQueue<>(queue_size);
+		this.writer = writer;
 	}
 	
 	public void addBufferWSource(ByteBufferWSource buffer_source) throws InterruptedException{
@@ -26,8 +28,8 @@ public class CommandReaderNameNode implements Runnable{
 					ByteBufferWSource buffer_source = buffer_queue.take();
 					ByteBuffer buffer = buffer_source.buffer;
 					String command_str = new String(buffer.array(),buffer.position(), buffer.remaining());
-					NIOCommandHeader cmdH = (NIOCommandHeader)NIOSerializer.FromString(command_str);
-					if(!opProcessor(cmdH)) {
+					NIOCommand cmd = (NIOCommand)NIOSerializer.FromString(command_str);
+					if(!opProcessor(cmd)) {
 						System.err.println("error in processing command");
 					}else {
 						//buffer_source.channel.is
@@ -41,18 +43,14 @@ public class CommandReaderNameNode implements Runnable{
 		
 	}
 	
-	private boolean opProcessor(NIOCommandHeader cmdH) {
-		if(cmdH == null) {
+	private boolean opProcessor(NIOCommand cmd) {
+		if(cmd == null) {
 			System.out.println("invalid command");
 			return false;
 		}
-		if(cmdH instanceof NIOCommandHeaderDirOp) {
-			return DirectoryController.instance.processRemoteCommand((NIOCommandHeaderDirOp)cmdH);
-		}else{
-			//unrecognized command header for namenode
-			return false;
-		}
+		return DirectoryController.instance.processRemoteCommand(cmd);
 	}
 	
 
 }
+

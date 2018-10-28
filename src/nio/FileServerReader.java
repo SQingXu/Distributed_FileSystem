@@ -9,7 +9,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class CommandReaderFileServer implements Runnable{
+import niocmd.NIOCommand;
+import niocmd.NIOCommandFactory;
+import niocmd.NIOCommandType;
+import niocmd.SendFileObject;
+
+public class FileServerReader implements Runnable{
 	public ConcurrentHashMap<SocketChannel, BlockingQueue<ByteBuffer>> receivingBufferQueues;
 	public BlockingQueue<ByteBuffer> nameQueue;
 	public int queue_size;
@@ -18,7 +23,7 @@ public class CommandReaderFileServer implements Runnable{
 	public ExecutorService threads_pool_sending;
 	public ExecutorService threads_pool_receiving;
 	
-	public CommandReaderFileServer(FileServer server, int queue_size, int thread_pool_size) {
+	public FileServerReader(FileServer server, int queue_size, int thread_pool_size) {
 		receivingBufferQueues = new ConcurrentHashMap<>();
 		this.queue_size = queue_size;
 		nameQueue = new ArrayBlockingQueue<>(queue_size);
@@ -26,7 +31,7 @@ public class CommandReaderFileServer implements Runnable{
 		threads_pool_sending = Executors.newFixedThreadPool(thread_pool_size);
 		threads_pool_receiving = Executors.newFixedThreadPool(thread_pool_size);
 	}
-	public CommandReaderFileServer(int queue_size) {
+	public FileServerReader(int queue_size) {
 		receivingBufferQueues = new ConcurrentHashMap<>();
 		this.queue_size = queue_size;
 		nameQueue = new ArrayBlockingQueue<>(queue_size);
@@ -59,9 +64,12 @@ public class CommandReaderFileServer implements Runnable{
 			if(!nameQueue.isEmpty()) {
 				try {
 					ByteBuffer buffer = nameQueue.take();
+					//TODO: the buffer contains a length header and 
+					// we should also consider what if the buffer is incomplete
 					String command_str = new String(buffer.array(),buffer.position(), buffer.remaining());
-					NIOCommandHeader cmdH = (NIOCommandHeader)NIOSerializer.FromString(command_str);
-					cmdProcessor(cmdH);
+					NIOCommand cmd = (NIOCommand)NIOSerializer.FromString(command_str);
+					
+					cmdProcessor(cmd);
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
@@ -69,28 +77,17 @@ public class CommandReaderFileServer implements Runnable{
 		}
 	}
 	
-	private boolean cmdProcessor(NIOCommandHeader cmdH) {
-		if(cmdH instanceof NIOCommandHeaderSendFileFromClient) {
-			if(server.datanode) {
-				return false;
-			}
-			for(InetSocketAddress address: ((NIOCommandHeaderSendFileFromClient)cmdH).node_addresses) {
+	private boolean cmdProcessor(NIOCommand cmd) {
+		if(cmd.type.equals(NIOCommandType.SEND_FILE_DATA)) {
+			SendFileObject sfo = NIOCommandFactory.fromCmdSendFile(cmd);
+			for(InetSocketAddress address: sfo.node_addresses) {
 				//send file to each of listed datanodes
-				NIOFileSendingTask task = new NIOFileSendingTask(((NIOCommandHeaderSendFileFromClient)cmdH).file_path,
-						((NIOCommandHeaderSendFileFromClient)cmdH).file_id, 
-						address,
-						((NIOCommandHeaderSendFileFromClient)cmdH).file_name);
+				NIOFileSendingTask task = new NIOFileSendingTask(sfo, address);
 				threads_pool_sending.execute(task);
 			}
-		}else if(cmdH instanceof NIOCommandHeaderSendFileFromDataNode) {
-			String file_path = server.file_dir + ((NIOCommandHeaderSendFileFromDataNode)cmdH).file_id.toString();
-			NIOFileSendingTask task = new NIOFileSendingTask(file_path,
-					((NIOCommandHeaderSendFileFromDataNode)cmdH).file_id,
-					((NIOCommandHeaderSendFileFromDataNode)cmdH).client_address,
-					((NIOCommandHeaderSendFileFromDataNode)cmdH).file_name);
-			threads_pool_sending.execute(task);
-		}else {
-			return false;
+		}else if(cmd.type.equals(NIOCommandType.RESULT_FEED)) {
+			//print out the feedback
+			System.out.println(cmd.args[0]);
 		}
 		return true;
 	}

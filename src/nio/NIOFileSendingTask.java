@@ -9,19 +9,20 @@ import java.nio.channels.SocketChannel;
 import java.util.Scanner;
 import java.util.UUID;
 
+import niocmd.NIOCommand;
+import niocmd.NIOCommandFactory;
+import niocmd.ReceiveFileObject;
+import niocmd.SendFileObject;
+
 public class NIOFileSendingTask implements Runnable{
-	public String local_path;
 	public InetSocketAddress address;
 	public SocketChannel sendChannel;
 	public RandomAccessFile aFile;
-	public UUID file_id;
-	public String file_name;
+	public SendFileObject sfo;
 	
-	public NIOFileSendingTask(String file_path, UUID file_id, InetSocketAddress address, String file_name) {
-		this.local_path = file_path;
+	public NIOFileSendingTask(SendFileObject sfo, InetSocketAddress address) {
 		this.address = address;
-		this.file_id = file_id;
-		this.file_name = file_name;
+		this.sfo = sfo;
 	}
 
 	@Override
@@ -31,19 +32,19 @@ public class NIOFileSendingTask implements Runnable{
 			sendChannel = SocketChannel.open(address);
 			
 			//blocking mode if channel is connected then move to next step
-			File file = new File(local_path);
+			File file = new File(sfo.file_path);
 			aFile = new RandomAccessFile(file, "r");
 			FileChannel inChannel = aFile.getChannel();
 			ByteBuffer buffer = ByteBuffer.allocate(1024);
 			//first send a command header
-			NIOCommandHeaderReceiveFile header;
-			header = new NIOCommandHeaderReceiveFile(file_name,file_id);
+			ReceiveFileObject rfo = new ReceiveFileObject(sfo.file_name,sfo.file_id);
+			NIOCommand header = NIOCommandFactory.commandReceiveFile(rfo);
 			
 			String header_str = FileHeaderEncodingHelper.addLengthHeader(NIOSerializer.toString(header));
 			ByteBuffer header_buffer = ByteBuffer.wrap(header_str.getBytes());
 			int header_length = sendChannel.write(header_buffer);
 			System.out.println("send header data packet: " + header_length);
-			System.out.println("file_id: " + header.file_id + " file_name: " + header.file_name);
+			System.out.println("file_id: " + sfo.file_id + " file_name: " + sfo.file_name);
 			
 			while(inChannel.read(buffer) > 0) {
 				buffer.flip();
@@ -52,7 +53,7 @@ public class NIOFileSendingTask implements Runnable{
 				buffer.clear();
 			}
 			//End of file
-			System.out.println("file " + local_path + " end of file sending reached");
+			System.out.println("file " + sfo.file_path + " end of file sending reached");
 			System.out.println("Closing");
 			sendChannel.close();
 			aFile.close();

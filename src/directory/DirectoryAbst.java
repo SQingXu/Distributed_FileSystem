@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public abstract class DirectoryAbst implements DirectoryI, Serializable{
+public abstract class DirectoryAbst extends NameDirFileObject implements DirectoryI, Serializable{
 	/**
 	 * 
 	 */
@@ -20,6 +20,7 @@ public abstract class DirectoryAbst implements DirectoryI, Serializable{
 		this.id = UUID.randomUUID();
 		this.containedFiles = new HashMap<String, DFile>();
 		this.containedDirectories = new HashMap<String, DirectoryAbst>();
+		this.isFile = false;
 	}
 	
 }

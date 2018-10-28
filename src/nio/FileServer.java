@@ -16,12 +16,16 @@ public class FileServer implements Runnable {
 	public InetSocketAddress namenode_address;
 	public Selector selector;
 	public ServerSocketChannel serverChannel;
-	public CommandReaderFileServer reader;
 	public SocketChannel nameChannel;
 	public boolean connected = false;
 	ByteBuffer buffer;
 	public String file_dir = ""; //for datanode
 	
+	public FileServerReader reader;
+	public ServerWriter writer;
+	
+	
+	public Thread write_thread;
 	public Thread read_thread;
 	public Thread select_thread;
 	
@@ -31,7 +35,7 @@ public class FileServer implements Runnable {
 	public void init(String host, int port) {
 		try {
 			//first start reading thread
-			reader = new CommandReaderFileServer(server, 1024, 4);
+			reader = new FileServerReader(server, 1024, 4);
 			read_thread = new Thread(reader);
 			read_thread.start();
 			
@@ -66,6 +70,10 @@ public class FileServer implements Runnable {
 	public void syncSelect() {
 		select_thread = new Thread(server);
 		select_thread.start();
+	}
+	
+	public void writeToBuffer() {
+		
 	}
 	
 	@Override
@@ -107,7 +115,6 @@ public class FileServer implements Runnable {
 						
 						ByteBufferWSource dBufferSource = new ByteBufferWSource(dBuffer,channel);
 						reader.addBufferWSource(dBufferSource);
-						
 						buffer.clear();
 						
 					}else if(key.isConnectable()) {
@@ -118,6 +125,11 @@ public class FileServer implements Runnable {
 							break;
 						}else {
 							key.interestOps(SelectionKey.OP_READ);
+							
+						}
+					}else if(key.isWritable()) {
+						if(datanode) {
+							
 						}
 					}
 					iterator.remove();

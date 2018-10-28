@@ -2,7 +2,7 @@ package directory;
 
 import java.util.UUID;
 
-public class DFile {
+public class DFile extends NameDirFileObject{
 	//at NameNode
 	public DirectoryAbst parentDir;
 	public String name;
@@ -11,6 +11,7 @@ public class DFile {
 		id = UUID.randomUUID();
 		this.name = name;
 		this.parentDir = parent;
+		this.isFile = true;
 	}
 	
 	

@@ -1,8 +1,14 @@
+
+import java.io.File;
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Scanner;
 import java.util.TreeMap;
 import java.util.UUID;
 
 import directory.DirectoryController;
+import main.CommandParsingHelper;
 import nio.FileHeaderEncodingHelper;
 
 public class TestMain {
@@ -46,6 +52,24 @@ public class TestMain {
 		test_buffer = ByteBuffer.wrap(test_str.getBytes());
 		System.out.println(FileHeaderEncodingHelper.getHeaderLength(test_buffer));
 		
+		List<String> result = CommandParsingHelper.separateString(" cd COMP\\ 530/output.txt newnameIsRightHere   ");
+		for(String str: result) {
+			System.out.println(str + str.length());
+		}
+		//test create file in folder with space
+		String path = "/Users/davidxu/Desktop/COMP 631/output.txt";
+		System.out.println(path);
+		File file = new File(path);
+		try {
+			file.createNewFile();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		Scanner sc = new Scanner(System.in);
+		String scan_str = sc.nextLine();
+		System.out.println(scan_str);
 	}
 	
 }

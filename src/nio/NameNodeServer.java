@@ -9,25 +9,35 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Arrays;
 
-public class NIOServerNameNode implements Runnable{
-	public static NIOServerNameNode server = new NIOServerNameNode();
+public class NameNodeServer implements Runnable{
+	public static NameNodeServer server = new NameNodeServer();
 	public ServerSocketChannel serverChannel;
 	public InetSocketAddress[] datanode_addresses;
 	public Selector selector;
-	public CommandReaderNameNode reader;
+	public NameNodeServerReader reader;
+	public ServerWriter writer;
 	
 	public Thread read_thread;
+	public Thread write_thread;
 	public Thread select_thread;
 	
-	protected NIOServerNameNode() {
+	protected NameNodeServer() {
 		
 	}
 	
 	public void init(String host, int port) {
 		try {
-			reader = new CommandReaderNameNode(1024);
+			//writer
+			writer = new ServerWriter(1024);
+			write_thread = new Thread(writer);
+			write_thread.start();
+			
+			//reader
+			reader = new NameNodeServerReader(1024, writer);
 			read_thread = new Thread(reader);
 			read_thread.start();
+			
+			
 			
 			selector = Selector.open();
 			serverChannel = ServerSocketChannel.open();
@@ -75,7 +85,7 @@ public class NIOServerNameNode implements Runnable{
 						ByteBuffer buffer = ByteBuffer.allocate(1024);
 						channel.read(buffer);
 						buffer.flip();
-						ByteBuffer ret = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());
+						//ByteBuffer ret = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());
 						
 						ByteBuffer mBuffer = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());;
 						byte[] anArrayCopy = Arrays.copyOfRange(mBuffer.array(), mBuffer.position(), mBuffer.limit());
@@ -86,6 +96,17 @@ public class NIOServerNameNode implements Runnable{
 						//buffer.remaining() = length
 						buffer.clear();
 						
+					}
+					//separate out write operation of channel
+					SocketChannel channel = (SocketChannel)key.channel();
+					if(!key.isWritable()) {
+						System.out.println("namenode key is not writable at channel : " + channel.socket().getPort() + " at " + 
+						channel.socket().toString());
+						writer.channelStatusUpdate(false, channel);
+					}else {
+						System.out.println("namenode key is writable at channel : " + channel.socket().getPort() + " at " + 
+						channel.socket().toString());
+						writer.channelStatusUpdate(true, channel);
 					}
 				}
 			}catch(Exception e) {
