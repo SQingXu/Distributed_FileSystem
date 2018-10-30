@@ -45,7 +45,8 @@ public class CommandParsingHelper {
 			args[1] = argList.get(2);
 			return new NIOCommand(cmdType, args);
 		}else {
-			throw new InvalidCommandException("incorrect number of arguments");
+			System.out.println("agr1: " + argList.get(1) + " arg2: " + argList.get(1) );
+			throw new InvalidCommandException("incorrect number of arguments with " + argList.size() + " arguments");
 		}
 		
 	}
@@ -70,7 +71,7 @@ public class CommandParsingHelper {
 			pre_ch = ch;
 			
 		}
-		if(start < cmdStr.length()-1) {
+		if(start <= cmdStr.length()-1) {
 			ret.add(cmdStr.substring(start,cmdStr.length()));
 		}
 		removeForwardSlash(ret);

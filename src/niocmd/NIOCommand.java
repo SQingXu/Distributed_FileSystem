@@ -12,6 +12,7 @@ public class NIOCommand implements Serializable {
 	public NIOCommand(NIOCommandType t, String[] args) {
 		this.type = t;
 		//copy the args
+		this.args = new String[args.length];
 		for(int i = 0; i < args.length; i++) {
 			this.args[i] = args[i];
 		}

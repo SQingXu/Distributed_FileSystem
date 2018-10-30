@@ -10,11 +10,7 @@ import java.util.Iterator;
 
 import nio.ByteBufferHeaderInfo;
 import nio.ByteBufferWSource;
-import nio.CommandReaderFileServer;
-import nio.FileHeaderEncodingHelper;
-import nio.NIOCommandHeaderReceiveFile;
-import nio.NIOSerializer;
-import nio.NIOServerNameNode;
+import nio.FileServerReader;
 
 public class TestNIOServer implements Runnable{
 	public static TestNIOServer server = new TestNIOServer();
@@ -22,7 +18,7 @@ public class TestNIOServer implements Runnable{
 	public InetSocketAddress[] datanode_addresses;
 	public Selector selector;
 	public ByteBuffer buffer;
-	public CommandReaderFileServer reader;
+	public FileServerReader reader;
 	
 	public Thread read_thread;
 	public Thread select_thread;
@@ -38,7 +34,7 @@ public class TestNIOServer implements Runnable{
 	public void init(String host, int port) {
 		try {
 			//first start reading thread
-			reader = new CommandReaderFileServer(1024);
+			reader = new FileServerReader(1024);
 			read_thread = new Thread(reader);
 			read_thread.start();
 			

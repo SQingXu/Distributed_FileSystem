@@ -34,10 +34,15 @@ public class FileServer implements Runnable {
 	
 	public void init(String host, int port) {
 		try {
-			//first start reading thread
+			//first start writer and reader thread
+			writer = new ServerWriter(1024);
+			write_thread = new Thread(writer);
+			write_thread.start(); 
+			
 			reader = new FileServerReader(server, 1024, 4);
 			read_thread = new Thread(reader);
 			read_thread.start();
+			
 			
 			selector = Selector.open();
 			buffer = ByteBuffer.allocate(1024);
@@ -54,6 +59,7 @@ public class FileServer implements Runnable {
 				System.out.println("successfully connected to namenode in first attempt");
 				nameChannel.register(selector, SelectionKey.OP_READ);
 			}else {
+				System.out.println("connected at later attempt");
 				nameChannel.register(selector, SelectionKey.OP_CONNECT);
 			}
 
@@ -96,17 +102,13 @@ public class FileServer implements Runnable {
 						System.out.println(info.getRemoteSocketAddress().toString());
 						
 					}else if(key.isReadable()) {
+						//System.out.println("the key is readable");
 						//file server 
 						//first read a commandMsg object
 						SocketChannel channel = (SocketChannel)key.channel();
 						
 						int num_bytes = channel.read(buffer);
 						
-						if(num_bytes <= 0 && !channel.equals(nameChannel)) {
-							//file receiving channel if the receive ended, close channel
-							channel.close();
-							continue;
-						}
 						//flip and duplicate
 						buffer.flip();
 						ByteBuffer mBuffer = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());;
@@ -119,12 +121,15 @@ public class FileServer implements Runnable {
 						
 					}else if(key.isConnectable()) {
 						//only name channel
+						System.out.println("successfully connect to namenode server");
 						connected = nameChannel.finishConnect();
+						System.out.println("finishConnect operation ends");
 						if(!connected) {
 							System.err.println("error in connecting to namenode");
 							break;
 						}else {
 							key.interestOps(SelectionKey.OP_READ);
+							
 							
 						}
 					}else if(key.isWritable()) {
@@ -135,7 +140,7 @@ public class FileServer implements Runnable {
 					iterator.remove();
 				}
 			}catch(Exception e) {
-				
+				e.printStackTrace();
 			}
 			
 		}

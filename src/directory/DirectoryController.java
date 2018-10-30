@@ -253,7 +253,8 @@ public class DirectoryController implements DirectoryControllerI{
 	}
 
 	@Override
-	public boolean processRemoteCommand(NIOCommand cmd) {
+	public boolean processRemoteCommand(NIOCommand cmd, NIOCommand feedback) {
+		System.out.println("Command type is: " +  cmd.type.toString());
 		if(cmd.type == NIOCommandType.CREATE_DIR) {
 			//arg1: dir name 
 			createDir(cmd.args[0]);
@@ -270,6 +271,27 @@ public class DirectoryController implements DirectoryControllerI{
 			return this.renameDirFile(cmd.args[0], cmd.args[1]);
 		}else if(cmd.type == NIOCommandType.SET_CURRENT_DIRECTORY){
 			return this.setCurrentDir(cmd.args[0]);
+		}else if(cmd.type == NIOCommandType.PRINT_WORKING_DIRECTORY){
+			System.out.println(this.currentPath());
+			if(feedback != null) {
+				feedback.type = NIOCommandType.RESULT_FEED;
+				feedback.args = new String[1];
+				feedback.args[0] = currentPath();
+			}
+			return true;
+		}else if(cmd.type == NIOCommandType.LIST_WORKING_DIRECTORY) {
+			String ret = "";
+			for(String dir_name: this.current_dir.containedDirectories.keySet()) {
+				ret += dir_name + '\n';
+			}
+			for(String file_name: this.current_dir.containedFiles.keySet()) {
+				ret += file_name + '\n';
+			}
+			if(feedback != null) {
+				feedback.type = NIOCommandType.RESULT_FEED;
+				feedback.args = new String[1];
+				feedback.args[0] = ret;
+			}
 		}else {
 			return false;
 		}

@@ -17,6 +17,7 @@ public class ServerWriter implements Runnable{
 	private int write_queue_size;
 	public ServerWriter(int write_queue_size) {
 		writeBufferQueues = new ConcurrentHashMap<>();
+		channelToWrite = new ConcurrentHashMap<>();
 		this.write_queue_size = write_queue_size;
 	}
 	

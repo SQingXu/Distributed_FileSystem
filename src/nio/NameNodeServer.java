@@ -3,11 +3,14 @@ package nio;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channel;
+import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Arrays;
+import java.util.Iterator;
 
 public class NameNodeServer implements Runnable{
 	public static NameNodeServer server = new NameNodeServer();
@@ -67,7 +70,13 @@ public class NameNodeServer implements Runnable{
 		while(true) {
 			try {
 				selector.select();
-				for(SelectionKey key: selector.selectedKeys()) {
+				Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
+				while(iterator.hasNext()) {
+					SelectionKey key = iterator.next();
+					if(!key.channel().isOpen()) {
+						key.cancel();
+						continue;
+					}
 					if(!key.isValid()) {
 						System.err.println("invalid keys");
 					}else if(key.isAcceptable()) {
@@ -81,6 +90,7 @@ public class NameNodeServer implements Runnable{
 						
 					}else if(key.isReadable()) {
 						//first read a commandMsg object
+						
 						SocketChannel channel = (SocketChannel)key.channel();
 						ByteBuffer buffer = ByteBuffer.allocate(1024);
 						channel.read(buffer);
@@ -98,7 +108,11 @@ public class NameNodeServer implements Runnable{
 						
 					}
 					//separate out write operation of channel
-					SocketChannel channel = (SocketChannel)key.channel();
+					SelectableChannel schannel = key.channel();
+					if(schannel.equals(serverChannel)) {
+						continue;
+					}
+					SocketChannel channel = (SocketChannel)schannel;
 					if(!key.isWritable()) {
 						System.out.println("namenode key is not writable at channel : " + channel.socket().getPort() + " at " + 
 						channel.socket().toString());
@@ -108,9 +122,11 @@ public class NameNodeServer implements Runnable{
 						channel.socket().toString());
 						writer.channelStatusUpdate(true, channel);
 					}
+					
 				}
+				iterator.remove();
 			}catch(Exception e) {
-				
+				e.printStackTrace();
 			}
 			
 		}

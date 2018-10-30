@@ -8,5 +8,5 @@ public interface DirectoryControllerI {
 	public boolean moveDirFile(String dir_str, String new_path);
 	public String currentPath();
 	public boolean renameDirFile(String path, String name);
-	public boolean processRemoteCommand(NIOCommand cmd);
+	public boolean processRemoteCommand(NIOCommand cmd, NIOCommand feedback);
 }
