@@ -12,7 +12,7 @@ public class ClientMain {
 		FileServer server = FileServer.server;
 		server.datanode = false;
 		server.namenode_address = new InetSocketAddress("localhost", 10000);
-		server.init("localhost", 10005, 0000);
+		server.init("localhost", 10009, 0000);
 		server.syncSelect();
 		//take input here
 		Scanner input = new Scanner(System.in);
@@ -29,7 +29,6 @@ public class ClientMain {
 				System.out.println("invalid command");
 				continue;
 			}
-			
 			
 		}
 	}

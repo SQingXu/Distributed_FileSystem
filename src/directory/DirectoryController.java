@@ -80,6 +80,7 @@ public class DirectoryController implements DirectoryControllerI{
 		}
 	}
 	
+	
 	@Override
 	public boolean deleteDirFile(String path) {
 		try {
@@ -310,7 +311,7 @@ public class DirectoryController implements DirectoryControllerI{
 		}else if(cmd.type == NIOCommandType.MOVE_DIR_FILE) {
 			//arg1: dir to move
 			//arg2: destination
-			return this.moveDirFile(cmd.args[0], cmd.args[1]);
+			return moveDirFile(cmd.args[0], cmd.args[1]);
 		}else if(cmd.type == NIOCommandType.RENAME_DIR_FILE) {
 			//arg1: dir to rename
 			//arg2: name
@@ -338,8 +339,6 @@ public class DirectoryController implements DirectoryControllerI{
 				feedback.args = new String[1];
 				feedback.args[0] = ret;
 			}
-		}else if(cmd.type == NIOCommandType.UPLOAD_FILE_NAME){
-			
 		}else {
 			return false;
 		}

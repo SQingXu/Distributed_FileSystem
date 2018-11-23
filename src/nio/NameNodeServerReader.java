@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import directory.DFile;
 import directory.DirectoryController;
+import directory.InValidPathException;
 import directory.NameDirFileObject;
 import main.CommandParsingHelper;
 import niocmd.NIOCommand;
@@ -98,36 +99,27 @@ public class NameNodeServerReader implements Runnable{
 		
 		
 		NIOCommand feedback = new NIOCommand(NIOCommandType.RESULT_FEED, new String[1]);
+		boolean result = true;
 		if(cmd.type.equals(NIOCommandType.DOWNLOAD_FILE_NAME)) {
-			boolean result = downloadCmdProcess(cmd, feedback);
-			if(!result) {
-				writer.writeToChannel(feedback, channel);
-			}
-			return;
+			result = downloadCmdProcess(cmd, feedback);
 		}else if(cmd.type.equals(NIOCommandType.UPLOAD_FILE_NAME)) {
-			boolean result = uploadCmdProcess(cmd,channel, feedback);
-			if(!result) {
-				writer.writeToChannel(feedback, channel);
-			}
-			return;
-		}else if(cmd.type.equals(NIOCommandType.SEND_FILE_FEED)) {
-			if(Boolean.parseBoolean(cmd.args[0])) {
-				//DirectoryController.instance.createFile(fname, path, file_addrs);
-			}
+			result = uploadCmdProcess(cmd,channel, feedback);
 		}else if(cmd.type.equals(NIOCommandType.RECEIVE_DATA_FEED)) {
-			boolean result = receiveFeedCmdProcess(cmd, feedback, channel);
-			if(!result) {
-				writer.writeToChannel(feedback, channel);
-			}
-			return;
-		}
-		
-		if(!opProcessor(cmd, feedback)) {
-			System.err.println("error in processing command");
+			result = receiveFeedCmdProcess(cmd, feedback, channel);
+		}else if(cmd.type.equals(NIOCommandType.REMOVE_DIR_FILE)) {
+			result = removeCmdProcess(cmd, feedback);
+		}else if(cmd.type.equals(NIOCommandType.REMOVE_FILE_FEED)) {
+			result = removeFeedCmdProcess(cmd, feedback, channel);
 		}else {
-			//buffer_source.channel.is
+			opProcessor(cmd, feedback);
+		    writer.writeToChannel(feedback, channel);
+		    return;
+		}
+		if(!result) {
 			writer.writeToChannel(feedback, channel);
 		}
+		return;
+		
 	}
 	private boolean opProcessor(NIOCommand cmd, NIOCommand feedback) {
 		if(cmd == null) {
@@ -189,9 +181,68 @@ public class NameNodeServerReader implements Runnable{
 						new InetSocketAddress(cmd.args[2], Integer.parseInt(cmd.args[3])),file.name);
 				NIOCommand send_datanode = NIOCommandFactory.commandSendFile(sfo);
 				writer.writeToChannel(send_datanode, channel);
+				return true;
+			}
+		}
+		feedback.args[0] = "nodes which contain the files are not online currently, try again later";
+		return false;
+	}
+	
+	private boolean removeCmdProcess(NIOCommand cmd, NIOCommand feedback) {
+		String fname_path = cmd.args[0];
+		NameDirFileObject o;
+		try {
+			o = DirectoryController.instance.parsePath(fname_path);
+		} catch (InValidPathException e) {
+			e.printStackTrace();
+			return false;
+		}
+		DFile file;
+		if(o.isFile) {
+			file = (DFile)o;
+		}else {
+			return opProcessor(cmd, feedback);
+		}
+		for(DataNodeAddress dna: file.containedNodes) {
+			if(server.dataNodeChannels.containsKey(dna)) {
+				//it is currently alive
+				SocketChannel channel = server.dataNodeChannels.get(dna);
+				//send NIOCommand to datanode
+				String[] args = new String[2];
+				args[0] = file.id.toString();
+				args[1] = fname_path;
+				NIOCommand remove_data = new NIOCommand(NIOCommandType.REMOVE_FILE_DATA, args);
+				writer.writeToChannel(remove_data, channel);
+			}else {
+				feedback.args[0] = "the node: " + dna.getServerAddress().toString() + " is not online currently";
 			}
 		}
 		
+		return true;
+	}
+	
+	private boolean removeFeedCmdProcess(NIOCommand cmd, NIOCommand feedback, SocketChannel channel) {
+		InetSocketAddress connected_addr;
+		try {
+			connected_addr = (InetSocketAddress)channel.getRemoteAddress();
+		} catch (IOException e) {
+			feedback.args[0] = "the address of this channel is invalid";
+			return false;
+		}
+		DataNodeAddress dna = server.containsNodeAddress(connected_addr);
+		if(dna == null) {
+			feedback.args[0] = "the datanode does not contain such address " + connected_addr.toString();
+			return false;
+		}
+		DFile file = DirectoryController.instance.findFile(cmd.args[1]);
+		if(file == null) {
+			feedback.args[0] = "the file to remove is invalid";
+			return false;
+		}
+		file.containedNodes.remove(dna);
+		if(file.containedNodes.size() == 0) {
+			DirectoryController.instance.deleteDirFile(cmd.args[1]);
+		}
 		return true;
 	}
 	

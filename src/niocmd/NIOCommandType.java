@@ -25,6 +25,7 @@ public enum NIOCommandType {
 	
 	//Client/DataNode Feedback
 	SEND_FILE_FEED,
-	RECEIVE_DATA_FEED
+	RECEIVE_DATA_FEED,
+	REMOVE_FILE_FEED
 	
 }

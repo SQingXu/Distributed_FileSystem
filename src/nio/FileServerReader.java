@@ -1,5 +1,6 @@
 package nio;
 
+import java.io.File;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
@@ -136,6 +137,21 @@ public class FileServerReader implements Runnable, ReceivingListener{
 			if(cmd.args[0] != null) {
 				System.out.println(cmd.args[0]);
 			}
+		}else if(cmd.type.equals(NIOCommandType.REMOVE_FILE_DATA)) {
+			if(server.datanode) {
+				String id_str  = cmd.args[0];
+				File file = new File(server.dns.data_dir + "/" + id_str);
+				boolean res = file.delete();
+				if(res) {
+					server.dns.containedFiles.remove(UUID.fromString(id_str));
+					//send remove feed back to namenode
+					NIOCommand feed = new NIOCommand(NIOCommandType.REMOVE_FILE_FEED, cmd.args);
+					server.writer.writeToChannel(feed, server.nameChannel);
+				}
+			}else {
+				//do nothing
+			}
+			
 		}
 		return true;
 	}
