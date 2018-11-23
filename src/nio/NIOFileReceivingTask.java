@@ -66,7 +66,7 @@ public class NIOFileReceivingTask implements Runnable{
 			if(isDatanode) {
 				aFile = new RandomAccessFile(dns.data_dir + "/" + rfo.file_id.toString(), "rw");
 			}else {
-				aFile = new RandomAccessFile(rfo.file_name, "rw");
+				aFile = new RandomAccessFile(rfo.file_path + "/" + rfo.file_name, "rw");
 			}
 			
 			FileChannel fileChannel = aFile.getChannel();
@@ -75,7 +75,6 @@ public class NIOFileReceivingTask implements Runnable{
 			while(!queue.isEmpty() || receiveChannel.isOpen()) {
 				fileChannel.write(queue.take());
 			}
-			System.out.println("start closing file channels");
 			fileChannel.close();
 			dns.containedFiles.add(rfo.file_id);
 			System.out.println("finish receiving file: " + rfo.file_name);

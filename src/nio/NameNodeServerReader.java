@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import directory.DFile;
 import directory.DirectoryController;
+import directory.NameDirFileObject;
 import main.CommandParsingHelper;
 import niocmd.NIOCommand;
 import niocmd.NIOCommandFactory;
@@ -53,6 +54,10 @@ public class NameNodeServerReader implements Runnable{
 		}
 		buffer_queue.put(buffer_source);
 		return;
+	}
+	
+	public void channelClosed(SocketChannel channel) {
+		channelAcumBuffers.remove(channel);
 	}
 
 	@Override
@@ -94,7 +99,11 @@ public class NameNodeServerReader implements Runnable{
 		
 		NIOCommand feedback = new NIOCommand(NIOCommandType.RESULT_FEED, new String[1]);
 		if(cmd.type.equals(NIOCommandType.DOWNLOAD_FILE_NAME)) {
-			
+			boolean result = downloadCmdProcess(cmd, feedback);
+			if(!result) {
+				writer.writeToChannel(feedback, channel);
+			}
+			return;
 		}else if(cmd.type.equals(NIOCommandType.UPLOAD_FILE_NAME)) {
 			boolean result = uploadCmdProcess(cmd,channel, feedback);
 			if(!result) {
@@ -142,8 +151,6 @@ public class NameNodeServerReader implements Runnable{
 			return false;
 		}
 		
-		
-		
 		//load balance
 		List<DataNodeAddress> file_addrs = new ArrayList<DataNodeAddress>();
 		List<DataNodeAddress> addresses = NameNodeServer.server.dataAddresses;
@@ -165,8 +172,25 @@ public class NameNodeServerReader implements Runnable{
 		
 	}
 	
-	private boolean downloadCmdProcess(NIOCommand cmd) {
-		String flocal_path = cmd.args[0];
+	private boolean downloadCmdProcess(NIOCommand cmd, NIOCommand feedback) {
+		String fname_path = cmd.args[0];
+		String dest_path = cmd.args[1];
+		DFile file = DirectoryController.instance.findFile(fname_path);
+		if(file == null) {
+			feedback.args[0] = "the file in remote directory is not found";
+			return false;
+		}
+		for(DataNodeAddress dna: file.containedNodes) {
+			if(server.dataNodeChannels.containsKey(dna)) {
+				//it is currently alive
+				SocketChannel channel = server.dataNodeChannels.get(dna);
+				//send NIOCommand to datanode
+				SendFileObject sfo = new SendFileObject(file.id, dest_path, 
+						new InetSocketAddress(cmd.args[2], Integer.parseInt(cmd.args[3])),file.name);
+				NIOCommand send_datanode = NIOCommandFactory.commandSendFile(sfo);
+				writer.writeToChannel(send_datanode, channel);
+			}
+		}
 		
 		return true;
 	}

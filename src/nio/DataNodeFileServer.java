@@ -5,6 +5,5 @@ public class DataNodeFileServer extends FileServer{
 	protected DataNodeFileServer(String file_dir) {
 		super();
 		this.datanode = true;
-		this.file_dir = file_dir;
 	}
 }

@@ -22,7 +22,6 @@ public class FileServer implements Runnable {
 	public SocketChannel nameChannel;
 	public boolean connected = false;
 	ByteBuffer buffer;
-	public String file_dir = ""; //for datanode
 	
 	public FileServerReader reader;
 	public ServerWriter writer;
@@ -97,6 +96,10 @@ public class FileServer implements Runnable {
 				Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
 				while(iterator.hasNext()) {
 					SelectionKey key = iterator.next();
+					if(!key.channel().isOpen()) {
+						key.cancel();
+						continue;
+					}
 					if(!key.isValid()) {
 						System.err.println("invalid keys");
 					}else if(key.isAcceptable()) {
@@ -117,6 +120,7 @@ public class FileServer implements Runnable {
 						int num_bytes = channel.read(buffer);
 						if(num_bytes < 0) {
 							System.out.println("the channel is closed");
+							reader.channelClosed(channel);
 							channel.close();
 							continue;
 						}

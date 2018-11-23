@@ -19,10 +19,12 @@ public class NIOFileSendingTask implements Runnable{
 	public SocketChannel sendChannel;
 	public RandomAccessFile aFile;
 	public SendFileObject sfo;
+	public FileServer server;
 	
-	public NIOFileSendingTask(SendFileObject sfo, InetSocketAddress address) {
+	public NIOFileSendingTask(SendFileObject sfo, InetSocketAddress address, FileServer server) {
 		this.address = address;
 		this.sfo = sfo;
+		this.server = server;
 	}
 
 	@Override
@@ -32,12 +34,19 @@ public class NIOFileSendingTask implements Runnable{
 			sendChannel = SocketChannel.open(address);
 			
 			//blocking mode if channel is connected then move to next step
-			File file = new File(sfo.file_path);
+			File file;
+			if(!server.datanode) {
+				file = new File(sfo.file_path);
+			}else {
+				file = new File(server.dns.data_dir + "/"+ sfo.file_id.toString());
+			}
+			
 			aFile = new RandomAccessFile(file, "r");
 			FileChannel inChannel = aFile.getChannel();
 			ByteBuffer buffer = ByteBuffer.allocate(1024);
 			//first send a command header
-			ReceiveFileObject rfo = new ReceiveFileObject(sfo.file_name,sfo.file_id);
+			
+			ReceiveFileObject rfo = new ReceiveFileObject(sfo.file_name,sfo.file_id, sfo.file_path);
 			NIOCommand header = NIOCommandFactory.commandReceiveFile(rfo);
 			
 			String header_str = FileHeaderEncodingHelper.addLengthHeader(NIOSerializer.toString(header));

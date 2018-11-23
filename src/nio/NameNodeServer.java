@@ -11,8 +11,10 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 public class NameNodeServer implements Runnable{
 	public static NameNodeServer server = new NameNodeServer();
@@ -26,9 +28,11 @@ public class NameNodeServer implements Runnable{
 	public Thread select_thread;
 	
 	public List<DataNodeAddress> dataAddresses;
+	public Map<DataNodeAddress, SocketChannel> dataNodeChannels; 
 	
 	protected NameNodeServer() {
 		dataAddresses = new ArrayList<>();
+		dataNodeChannels = new HashMap<>();
 	}
 	
 	public void init(String host, int port) {
@@ -72,6 +76,9 @@ public class NameNodeServer implements Runnable{
 			if(addr.getServerAddress().equals(address)) {
 				return addr;
 			}
+			if(addr.getNameConnectedAddress().equals(address)) {
+				return addr;
+			}
 		}
 		return null;
 	}
@@ -96,7 +103,12 @@ public class NameNodeServer implements Runnable{
 						clientChannel.configureBlocking(false);
 						clientChannel.register(selector, SelectionKey.OP_READ);
 						Socket info = clientChannel.socket();
-						
+						//add datanode channel for later uses
+						DataNodeAddress dna = containsNodeAddress((InetSocketAddress)clientChannel.getRemoteAddress());
+						if(dna != null) {
+							dataNodeChannels.put(dna, clientChannel);
+							System.out.println("this is a channel from datanode");
+						}
 						System.out.println("New Connected Channel: ");
 						System.out.println(info.getRemoteSocketAddress().toString());
 						
@@ -105,7 +117,18 @@ public class NameNodeServer implements Runnable{
 						
 						SocketChannel channel = (SocketChannel)key.channel();
 						ByteBuffer buffer = ByteBuffer.allocate(1024);
-						channel.read(buffer);
+						int result = channel.read(buffer);
+						if(result < 0) {
+							//the peer channel is closed
+							System.out.println("channel: " + channel.getRemoteAddress() + " is closed remotely");
+							DataNodeAddress dna = containsNodeAddress((InetSocketAddress)channel.getRemoteAddress());
+							if(dna != null) {
+								dataNodeChannels.remove(dna);
+								System.out.println("the datanode channel is removed");
+							}
+							reader.channelClosed(channel);
+							channel.close();
+						}
 						buffer.flip();
 						//ByteBuffer ret = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());
 						

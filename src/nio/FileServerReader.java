@@ -68,6 +68,16 @@ public class FileServerReader implements Runnable, ReceivingListener{
 		
 	}
 	
+	public void channelClosed(SocketChannel channel) {
+		if(channel.equals(server.nameChannel)) {
+			//do nothing for now
+		}
+		if(receivingBufferQueues.containsKey(channel)) {
+			//worst case senario the channel accidentally closed during the file transferring
+			receivingBufferQueues.remove(channel);
+		}
+	}
+	
 	@Override
 	public void run() {
 		while(true) {
@@ -117,8 +127,8 @@ public class FileServerReader implements Runnable, ReceivingListener{
 		if(cmd.type.equals(NIOCommandType.SEND_FILE_DATA)) {
 			SendFileObject sfo = NIOCommandFactory.fromCmdSendFile(cmd);
 			for(InetSocketAddress address: sfo.node_addresses) {
-				//send file to each of listed datanodes
-				NIOFileSendingTask task = new NIOFileSendingTask(sfo, address);
+				//send file to each of listed datanodes/client
+				NIOFileSendingTask task = new NIOFileSendingTask(sfo, address, server);
 				threads_pool_sending.execute(task);
 			}
 		}else if(cmd.type.equals(NIOCommandType.RESULT_FEED)) {

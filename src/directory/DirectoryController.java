@@ -65,6 +65,22 @@ public class DirectoryController implements DirectoryControllerI{
 	}
 	
 	@Override
+	public DFile findFile(String fpath) {
+		NameDirFileObject o;
+		try {
+			o = parsePath(fpath);
+		} catch (InValidPathException e) {
+			e.printStackTrace();
+			return null;
+		}
+		if(!o.isFile) {
+			return null;
+		}else {
+			return (DFile)o;
+		}
+	}
+	
+	@Override
 	public boolean deleteDirFile(String path) {
 		try {
 			NameDirFileObject o = parsePath(path);

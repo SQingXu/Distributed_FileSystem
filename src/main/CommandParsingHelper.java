@@ -1,10 +1,12 @@
 package main;
 
 import java.io.File;
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 
-
+import nio.FileServer;
 import niocmd.NIOCommand;
 import niocmd.NIOCommandType;
 
@@ -48,6 +50,18 @@ public class CommandParsingHelper {
 				if(!f.exists() || f.isDirectory()) {
 					throw new InvalidCommandException("the local file path is invalid");
 				}
+			}
+			if(cmdType.equals(NIOCommandType.DOWNLOAD_FILE_NAME)) {
+				args = new String[4];
+				InetSocketAddress local_addr;
+				try {
+					local_addr = (InetSocketAddress)FileServer.server.serverChannel.getLocalAddress();
+				} catch (IOException e) {
+					throw new InvalidCommandException("client address is currently not valid");
+				}
+				args[2] = local_addr.getHostName();
+				args[3] = Integer.toString(local_addr.getPort());
+				System.out.println("append client's address on download request: " + local_addr.toString());
 			}
 			args[0] = argList.get(1);
 			args[1] = argList.get(2);
