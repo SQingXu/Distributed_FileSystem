@@ -3,6 +3,7 @@ package nio;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,16 +15,15 @@ import niocmd.NIOCommandFactory;
 import niocmd.NIOCommandType;
 import niocmd.SendFileObject;
 
-public class FileServerReader implements Runnable{
+public class FileServerReader implements Runnable, ReceivingListener{
 	public ConcurrentHashMap<SocketChannel, BlockingQueue<ByteBuffer>> receivingBufferQueues;
 	public BlockingQueue<ByteBuffer> nameQueue;
 	public int queue_size;
 	public FileServer server;
 	
-	private ByteBuffer lengthBuffer;
-	private ByteBuffer gatheredBuffer;
-	private final int lenBuffer_len = 4;
-	private boolean getLen = false;
+	private AcumulateBuffer acu_buffer;
+	
+	public BlockingQueue<NIOCommand> confirmReceivingQueue;
 	
 	public ExecutorService threads_pool_sending;
 	public ExecutorService threads_pool_receiving;
@@ -32,18 +32,19 @@ public class FileServerReader implements Runnable{
 		receivingBufferQueues = new ConcurrentHashMap<>();
 		this.queue_size = queue_size;
 		nameQueue = new ArrayBlockingQueue<>(queue_size);
+		confirmReceivingQueue = new ArrayBlockingQueue<>(queue_size);
 		this.server = server;
 		threads_pool_sending = Executors.newFixedThreadPool(thread_pool_size);
 		threads_pool_receiving = Executors.newFixedThreadPool(thread_pool_size);
 		
-		lengthBuffer = ByteBuffer.allocate(lenBuffer_len);
+		
+		acu_buffer = new AcumulateBuffer();
 	}
-	public FileServerReader(int queue_size) {
-		receivingBufferQueues = new ConcurrentHashMap<>();
-		this.queue_size = queue_size;
-		nameQueue = new ArrayBlockingQueue<>(queue_size);
-		lengthBuffer = ByteBuffer.allocate(lenBuffer_len);
-	}
+//	public FileServerReader(int queue_size) {
+//		receivingBufferQueues = new ConcurrentHashMap<>();
+//		this.queue_size = queue_size;
+//		nameQueue = new ArrayBlockingQueue<>(queue_size);
+//	}
 	
 	
 	public void addBufferWSource(ByteBufferWSource bufferSource) throws InterruptedException{
@@ -56,7 +57,7 @@ public class FileServerReader implements Runnable{
 		if(!receivingBufferQueues.containsKey(channel)) {
 			receivingBufferQueues.put(channel, new ArrayBlockingQueue<ByteBuffer>(queue_size));
 			NIOFileReceivingTask task = 
-					new NIOFileReceivingTask(receivingBufferQueues, channel, bufferSource.buffer,server.datanode);
+					new NIOFileReceivingTask(receivingBufferQueues, channel, bufferSource.buffer,server.datanode, this, server.dns);
 			//Thread receiving = new Thread(task);
 			//receiving.start();
 			threads_pool_receiving.execute(task);
@@ -73,40 +74,23 @@ public class FileServerReader implements Runnable{
 			if(!nameQueue.isEmpty()) {
 				try {
 					ByteBuffer buffer = nameQueue.take();
-					//TODO: the buffer contains a length header and 
-					// we should also consider what if the buffer is incomplete
 					while(buffer.remaining() > 0) {
-						if(!getLen) {
-							if(buffer.remaining() >= lengthBuffer.remaining()) {
-								int advanced = lengthBuffer.remaining();
-								lengthBuffer.put(buffer.array(), buffer.position(), advanced);
-								//update length buffer
-								buffer.position(buffer.position()+advanced);
-								lengthBuffer.flip();
-								int buffer_length = lengthBuffer.getInt();
-								lengthBuffer.clear();
-								getLen = true;
-								
-								//allocate for that amount of buffer 
-								gatheredBuffer = ByteBuffer.allocate(buffer_length);
-							}else {
-								lengthBuffer.put(buffer.array(), buffer.position(),buffer.remaining());
-								buffer.position(buffer.position() + buffer.remaining());
-							}
-						}else {
-							int advanced = Math.min(gatheredBuffer.remaining(), buffer.remaining());
-							gatheredBuffer.put(buffer.array(), buffer.position(), advanced);
-							if(gatheredBuffer.remaining() == 0) {
-								getLen = false;
-								gatheredBuffer.flip();
-								processCmd(gatheredBuffer);
-								gatheredBuffer.clear();
-							}
-							buffer.position(buffer.position()+ advanced);
+						if(acu_buffer.acumulate(buffer)) {
+							processCmd(acu_buffer.gatheredBuffer);
 						}
 					}
 				} catch (Exception e) {
 					e.printStackTrace();
+					continue;
+				}
+			}
+			if(!confirmReceivingQueue.isEmpty()) {
+				try {
+					NIOCommand cmd = this.confirmReceivingQueue.take();
+					server.writer.writeToChannel(cmd, server.nameChannel);
+				}catch(Exception e) {
+					e.printStackTrace();
+					continue;
 				}
 			}
 		}
@@ -144,5 +128,22 @@ public class FileServerReader implements Runnable{
 			}
 		}
 		return true;
+	}
+
+
+	@Override
+	public void notifyReceived(UUID id) {
+		String[] args = new String[3];
+		try {
+			args[0] = id.toString();
+			InetSocketAddress server_addr = (InetSocketAddress)server.serverChannel.getLocalAddress();
+			args[1] = server_addr.getHostName();
+			args[2] = Integer.toString(server_addr.getPort());
+			NIOCommand cmd = new NIOCommand(NIOCommandType.RECEIVE_DATA_FEED, args);
+			confirmReceivingQueue.put(cmd);
+		} catch (Exception e) {
+			e.printStackTrace();
+			return;
+		}
 	}
 }

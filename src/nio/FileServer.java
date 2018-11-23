@@ -10,9 +10,12 @@ import java.nio.channels.SocketChannel;
 import java.util.Arrays;
 import java.util.Iterator;
 
+import directory.DataNodeStructure;
+
 public class FileServer implements Runnable {
 	public static FileServer server = new FileServer();
 	public boolean datanode;
+	public DataNodeStructure dns;
 	public InetSocketAddress namenode_address;
 	public Selector selector;
 	public ServerSocketChannel serverChannel;
@@ -30,9 +33,10 @@ public class FileServer implements Runnable {
 	public Thread select_thread;
 	
 	protected FileServer() {
+		dns = new DataNodeStructure("");
 	}
 	
-	public void init(String host, int port) {
+	public void init(String host, int port, int name_port) {
 		try {
 			//first start writer and reader thread
 			writer = new ServerWriter(1024);
@@ -53,6 +57,9 @@ public class FileServer implements Runnable {
 			serverChannel.configureBlocking(false);
 			
 			nameChannel = SocketChannel.open();
+			if(datanode) {
+				nameChannel.bind(new InetSocketAddress(host, name_port));
+			}
 			nameChannel.configureBlocking(false);
 			connected = nameChannel.connect(namenode_address);
 			if(connected) {
@@ -108,7 +115,11 @@ public class FileServer implements Runnable {
 						SocketChannel channel = (SocketChannel)key.channel();
 						
 						int num_bytes = channel.read(buffer);
-						
+						if(num_bytes < 0) {
+							System.out.println("the channel is closed");
+							channel.close();
+							continue;
+						}
 						//flip and duplicate
 						buffer.flip();
 						ByteBuffer mBuffer = ByteBuffer.wrap(buffer.array(),0,buffer.remaining());;

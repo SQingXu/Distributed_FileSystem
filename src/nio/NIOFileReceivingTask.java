@@ -7,6 +7,7 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
+import directory.DataNodeStructure;
 import niocmd.NIOCommand;
 import niocmd.NIOCommandFactory;
 import niocmd.NIOCommandType;
@@ -22,14 +23,18 @@ public class NIOFileReceivingTask implements Runnable{
 	public ByteBufferHeaderInfo header_info;
 	public String header_str;
 	public boolean isDatanode;
+	public ReceivingListener listener;
+	public DataNodeStructure dns;
 	
 	public NIOFileReceivingTask(ConcurrentHashMap<SocketChannel, BlockingQueue<ByteBuffer>> bufferQueues,
-			SocketChannel channel, ByteBuffer meta, boolean isDatanode) {
+			SocketChannel channel, ByteBuffer meta, boolean isDatanode, ReceivingListener listener, DataNodeStructure dns) {
 		this.receivingBufferQueues = bufferQueues;
 		this.queue = bufferQueues.get(channel);
 		this.receiveChannel = channel;
 		this.meta_buffer = meta;
 		this.isDatanode = isDatanode;
+		this.listener = listener;
+		this.dns = dns;
 	}
 	
 	@Override
@@ -59,7 +64,7 @@ public class NIOFileReceivingTask implements Runnable{
 			}
 			ReceiveFileObject rfo = NIOCommandFactory.fromCmdReceiveFile(cmd); 
 			if(isDatanode) {
-				aFile = new RandomAccessFile(rfo.file_id.toString(), "rw");
+				aFile = new RandomAccessFile(dns.data_dir + "/" + rfo.file_id.toString(), "rw");
 			}else {
 				aFile = new RandomAccessFile(rfo.file_name, "rw");
 			}
@@ -70,11 +75,18 @@ public class NIOFileReceivingTask implements Runnable{
 			while(!queue.isEmpty() || receiveChannel.isOpen()) {
 				fileChannel.write(queue.take());
 			}
+			System.out.println("start closing file channels");
 			fileChannel.close();
+			dns.containedFiles.add(rfo.file_id);
 			System.out.println("finish receiving file: " + rfo.file_name);
+			if(isDatanode) {
+				listener.notifyReceived(rfo.file_id);
+			}
 			
 		}catch(Exception e){
 			e.printStackTrace();
+			
+			return;
 		}
 		
 	}

@@ -4,7 +4,6 @@ package nio;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.util.HashSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,10 +57,11 @@ public class ServerWriter implements Runnable{
 				BlockingQueue<ByteBuffer> writeQueue = writeBufferQueues.get(channel);
 				while(!writeQueue.isEmpty()) {
 					try {
-						ByteBuffer buffer = writeQueue.take();
+						ByteBuffer buffer = writeQueue.peek();
 						channel.write(buffer);
-						if(buffer.remaining() > 0) {
-							writeQueue.put(buffer);
+						//only take it from the queue when the buffer has no remaining bytes
+						if(buffer.remaining() == 0) {
+							writeQueue.take();
 						}
 					} catch (Exception e) {
 						e.printStackTrace();

@@ -9,13 +9,14 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 
 public class NameNodeServer implements Runnable{
 	public static NameNodeServer server = new NameNodeServer();
 	public ServerSocketChannel serverChannel;
-	public InetSocketAddress[] datanode_addresses;
 	public Selector selector;
 	public NameNodeServerReader reader;
 	public ServerWriter writer;
@@ -24,8 +25,10 @@ public class NameNodeServer implements Runnable{
 	public Thread write_thread;
 	public Thread select_thread;
 	
+	public List<DataNodeAddress> dataAddresses;
+	
 	protected NameNodeServer() {
-		
+		dataAddresses = new ArrayList<>();
 	}
 	
 	public void init(String host, int port) {
@@ -36,7 +39,7 @@ public class NameNodeServer implements Runnable{
 			write_thread.start();
 			
 			//reader
-			reader = new NameNodeServerReader(1024, writer);
+			reader = new NameNodeServerReader(1024, writer, server);
 			read_thread = new Thread(reader);
 			read_thread.start();
 			
@@ -62,6 +65,15 @@ public class NameNodeServer implements Runnable{
 	public void syncSelect() {
 		select_thread = new Thread(server);
 		select_thread.start();
+	}
+	
+	public DataNodeAddress containsNodeAddress(InetSocketAddress address) {
+		for(DataNodeAddress addr:this.dataAddresses) {
+			if(addr.getServerAddress().equals(address)) {
+				return addr;
+			}
+		}
+		return null;
 	}
 	
 
@@ -108,20 +120,20 @@ public class NameNodeServer implements Runnable{
 						
 					}
 					//separate out write operation of channel
-					SelectableChannel schannel = key.channel();
-					if(schannel.equals(serverChannel)) {
-						continue;
-					}
-					SocketChannel channel = (SocketChannel)schannel;
-					if(!key.isWritable()) {
-						System.out.println("namenode key is not writable at channel : " + channel.socket().getPort() + " at " + 
-						channel.socket().toString());
-						writer.channelStatusUpdate(false, channel);
-					}else {
-						System.out.println("namenode key is writable at channel : " + channel.socket().getPort() + " at " + 
-						channel.socket().toString());
-						writer.channelStatusUpdate(true, channel);
-					}
+//					SelectableChannel schannel = key.channel();
+//					if(schannel.equals(serverChannel)) {
+//						continue;
+//					}
+//					SocketChannel channel = (SocketChannel)schannel;
+//					if(!key.isWritable()) {
+//						System.out.println("namenode key is not writable at channel : " + channel.socket().getPort() + " at " + 
+//						channel.socket().toString());
+//						writer.channelStatusUpdate(false, channel);
+//					}else {
+//						System.out.println("namenode key is writable at channel : " + channel.socket().getPort() + " at " + 
+//						channel.socket().toString());
+//						writer.channelStatusUpdate(true, channel);
+//					}
 					
 				}
 				iterator.remove();

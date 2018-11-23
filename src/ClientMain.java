@@ -12,18 +12,21 @@ public class ClientMain {
 		FileServer server = FileServer.server;
 		server.datanode = false;
 		server.namenode_address = new InetSocketAddress("localhost", 10000);
-		server.init("localhost", 10001);
+		server.init("localhost", 10005, 0000);
 		server.syncSelect();
 		//take input here
 		Scanner input = new Scanner(System.in);
 		while(true) {
 			try {
 				String cmd_str = input.nextLine();
+				if(cmd_str == "") {
+					continue;
+				}
 				NIOCommand cmd  = CommandParsingHelper.parseCmdString(cmd_str);
 				server.writer.writeToChannel(cmd, server.nameChannel);
 			} catch (InvalidCommandException e) {
 				// TODO Auto-generated catch block
-				e.printStackTrace();
+				System.out.println("invalid command");
 				continue;
 			}
 			

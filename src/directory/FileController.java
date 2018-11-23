@@ -13,8 +13,8 @@ public class FileController implements FileControllerI{
 
 	@Override
 	public boolean createFile(String name) {
-		DFile file = new DFile(name, dirSingleton.current_dir);
-		dirSingleton.current_dir.containedFiles.put(name, file);
+//		DFile file = new DFile(name, dirSingleton.current_dir);
+//		dirSingleton.current_dir.containedFiles.put(name, file);
 		return true;
 	}
 
@@ -30,9 +30,9 @@ public class FileController implements FileControllerI{
 		}catch(Exception e) {
 			return false;
 		}
-		DirectoryAbst dir = (DirectoryAbst)dfo;
-		DFile file = new DFile(name, dir);
-		dir.containedFiles.put(name, file);
+		//DirectoryAbst dir = (DirectoryAbst)dfo;
+//		DFile file = new DFile(name, dir);
+//		dir.containedFiles.put(name, file);
 		return true;
 	}
 

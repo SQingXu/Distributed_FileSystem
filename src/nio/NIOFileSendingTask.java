@@ -49,7 +49,6 @@ public class NIOFileSendingTask implements Runnable{
 			while(inChannel.read(buffer) > 0) {
 				buffer.flip();
 				int length = sendChannel.write(buffer);
-				System.out.println("send one data packet: " + length);
 				buffer.clear();
 			}
 			//End of file

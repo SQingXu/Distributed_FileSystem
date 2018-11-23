@@ -1,29 +1,56 @@
 package nio;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
+import directory.DFile;
 import directory.DirectoryController;
+import main.CommandParsingHelper;
 import niocmd.NIOCommand;
+import niocmd.NIOCommandFactory;
 import niocmd.NIOCommandType;
+import niocmd.SendFileObject;
+
+class DFileReceive{
+	public DFile file;
+	public int left_to_receive;
+	public boolean first_to_receive;
+	public DFileReceive(DFile file, int t) {
+		this.file =file;
+		this.left_to_receive = t;
+		this.first_to_receive = true;
+	}
+}
 
 public class NameNodeServerReader implements Runnable{
 	public BlockingQueue<ByteBufferWSource> buffer_queue;
 	public ServerWriter writer;
-	private ByteBuffer lengthBuffer;
-	private ByteBuffer gatheredBuffer;
-	private final int lenBuffer_len = 4;
-	private boolean getLen = false;
-	public NameNodeServerReader(int queue_size, ServerWriter writer) {
+	public ConcurrentHashMap<SocketChannel, AcumulateBuffer> channelAcumBuffers;
+	public Map<UUID, DFileReceive> pending_files;
+	public NameNodeServer server;
+	public NameNodeServerReader(int queue_size, ServerWriter writer, NameNodeServer server) {
 		buffer_queue = new ArrayBlockingQueue<>(queue_size);
 		this.writer = writer;
-		lengthBuffer = ByteBuffer.allocate(lenBuffer_len);
+		this.server = server;
+		channelAcumBuffers = new ConcurrentHashMap<>();
+		pending_files = new HashMap<>();
+		
 	}
 	
 	public void addBufferWSource(ByteBufferWSource buffer_source) throws InterruptedException{
+		if(!channelAcumBuffers.containsKey(buffer_source.channel)) {
+			channelAcumBuffers.put(buffer_source.channel, new AcumulateBuffer());
+		}
 		buffer_queue.put(buffer_source);
 		return;
 	}
@@ -34,40 +61,14 @@ public class NameNodeServerReader implements Runnable{
 			if(!buffer_queue.isEmpty()) {
 				try {
 					ByteBufferWSource buffer_source = buffer_queue.take();
+					SocketChannel channel = buffer_source.channel;
 					ByteBuffer buffer = buffer_source.buffer;
+					AcumulateBuffer ab = channelAcumBuffers.get(channel);
 					while(buffer.remaining() > 0) {
-						if(!getLen) {
-							if(buffer.remaining() >= lengthBuffer.remaining()) {
-								int advanced = lengthBuffer.remaining();
-								lengthBuffer.put(buffer.array(), buffer.position(), advanced);
-								//update length buffer
-								buffer.position(buffer.position()+advanced);
-								lengthBuffer.flip();
-								int buffer_length = lengthBuffer.getInt();
-								lengthBuffer.clear();
-								getLen = true;
-								
-								//allocate for that amount of buffer 
-								gatheredBuffer = ByteBuffer.allocate(buffer_length);
-							}else {
-								lengthBuffer.put(buffer.array(), buffer.position(),buffer.remaining());
-								buffer.position(buffer.position() + buffer.remaining());
-							}
-						}else {
-							int advanced = Math.min(gatheredBuffer.remaining(), buffer.remaining());
-							gatheredBuffer.put(buffer.array(), buffer.position(), advanced);
-							if(gatheredBuffer.remaining() == 0) {
-								getLen = false;
-								gatheredBuffer.flip();
-								processCmd(gatheredBuffer, buffer_source.channel);
-								gatheredBuffer.clear();
-							}
-							buffer.position(buffer.position()+ advanced);
+						if(ab.acumulate(buffer)) {
+							processCmd(ab.gatheredBuffer, channel);
 						}
 					}
-					
-					
-					
 					
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -80,7 +81,7 @@ public class NameNodeServerReader implements Runnable{
 	
 	private void processCmd(ByteBuffer buffer, SocketChannel channel) {
 		String command_str = new String(buffer.array(),buffer.position(), buffer.remaining());
-		System.out.println("Read string is: " + command_str);
+		//System.out.println("Read string is: " + command_str);
 		NIOCommand cmd;
 		try {
 			cmd = (NIOCommand)NIOSerializer.FromString(command_str);
@@ -89,7 +90,29 @@ public class NameNodeServerReader implements Runnable{
 			e.printStackTrace();
 			return;
 		}
+		
+		
 		NIOCommand feedback = new NIOCommand(NIOCommandType.RESULT_FEED, new String[1]);
+		if(cmd.type.equals(NIOCommandType.DOWNLOAD_FILE_NAME)) {
+			
+		}else if(cmd.type.equals(NIOCommandType.UPLOAD_FILE_NAME)) {
+			boolean result = uploadCmdProcess(cmd,channel, feedback);
+			if(!result) {
+				writer.writeToChannel(feedback, channel);
+			}
+			return;
+		}else if(cmd.type.equals(NIOCommandType.SEND_FILE_FEED)) {
+			if(Boolean.parseBoolean(cmd.args[0])) {
+				//DirectoryController.instance.createFile(fname, path, file_addrs);
+			}
+		}else if(cmd.type.equals(NIOCommandType.RECEIVE_DATA_FEED)) {
+			boolean result = receiveFeedCmdProcess(cmd, feedback, channel);
+			if(!result) {
+				writer.writeToChannel(feedback, channel);
+			}
+			return;
+		}
+		
 		if(!opProcessor(cmd, feedback)) {
 			System.err.println("error in processing command");
 		}else {
@@ -103,6 +126,87 @@ public class NameNodeServerReader implements Runnable{
 			return false;
 		}
 		return DirectoryController.instance.processRemoteCommand(cmd, feedback);
+	}
+	
+	private boolean uploadCmdProcess(NIOCommand cmd, SocketChannel channel, NIOCommand feedback) {
+		String flocal_path = cmd.args[0];
+		String name_path = cmd.args[1];
+		
+		//cannot update directory until actual file data finish uploading
+		//pending for the file
+		//first we still need to know if the directory is valid
+		String fname = CommandParsingHelper.getNamefromPath(flocal_path);
+		DFile pending_f = DirectoryController.instance.createFilePre(fname, name_path);
+		if(pending_f == null) {
+			feedback.args[0] = "The path is invalid";
+			return false;
+		}
+		
+		
+		
+		//load balance
+		List<DataNodeAddress> file_addrs = new ArrayList<DataNodeAddress>();
+		List<DataNodeAddress> addresses = NameNodeServer.server.dataAddresses;
+		DataNodeAddress node1 = addresses.get(0);
+		DataNodeAddress node2 = addresses.get(1);
+		if(node1 != null) {
+			file_addrs.add(node1);
+		}
+		if(node2 != null) {
+			file_addrs.add(node2);
+		}
+		pending_files.put(pending_f.id, new DFileReceive(pending_f,2));
+		
+		//send NIOCommand back to client
+		SendFileObject sfo = new SendFileObject(pending_f.id, flocal_path,file_addrs);
+		NIOCommand send_client = NIOCommandFactory.commandSendFile(sfo);
+		writer.writeToChannel(send_client, channel);
+		return true;
+		
+	}
+	
+	private boolean downloadCmdProcess(NIOCommand cmd) {
+		String flocal_path = cmd.args[0];
+		
+		return true;
+	}
+	
+	private boolean receiveFeedCmdProcess(NIOCommand cmd, NIOCommand feedback, SocketChannel channel) {
+		try {
+			//first check the info is from valid datanode server source
+			InetSocketAddress addr = new InetSocketAddress(cmd.args[1], Integer.parseInt(cmd.args[2]));
+			DataNodeAddress dna = server.containsNodeAddress(addr);
+			if(dna == null) {
+				feedback.args[0] = "the datanode does not contain such address " + addr.toString();
+				return false;
+			}
+			//second check the file is in pending_files sequence
+			UUID id = UUID.fromString(cmd.args[0]);
+			if(!pending_files.containsKey(id)) {
+				//?Maybe I should do sth here to remove the unintended file
+				feedback.args[0] = "the file received at datanode is not expected";
+				return false;
+			}
+			
+			DFileReceive fro = pending_files.get(id);
+			DFile file = fro.file;
+			file.containedNodes.add(dna);
+			if(fro.first_to_receive) {
+				file.parentDir.containedFiles.put(file.name, file);
+				fro.first_to_receive = false;
+			}
+			//update times of receiving
+			fro.left_to_receive -= 1;
+			if(fro.left_to_receive == 0) {
+				pending_files.remove(id);
+			}
+			
+		} catch (Exception e) {
+			feedback.args[0] = "the exception occurs during execution";
+			e.printStackTrace();
+			return false;
+		}
+		return true;
 	}
 	
 

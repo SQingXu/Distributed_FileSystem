@@ -1,5 +1,6 @@
 package main;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,6 +42,13 @@ public class CommandParsingHelper {
 				|| cmdType.equals(NIOCommandType.DOWNLOAD_FILE_NAME) || cmdType.equals(NIOCommandType.UPLOAD_FILE_NAME)) 
 				&& argList.size() == 3) {
 			args = new String[2];
+			if(cmdType.equals(NIOCommandType.UPLOAD_FILE_NAME)) {
+				//check for file valid
+				File f = new File(argList.get(1));
+				if(!f.exists() || f.isDirectory()) {
+					throw new InvalidCommandException("the local file path is invalid");
+				}
+			}
 			args[0] = argList.get(1);
 			args[1] = argList.get(2);
 			return new NIOCommand(cmdType, args);
@@ -49,6 +57,11 @@ public class CommandParsingHelper {
 			throw new InvalidCommandException("incorrect number of arguments with " + argList.size() + " arguments");
 		}
 		
+	}
+	
+	public static String getNamefromPath(String path) {
+		File f = new File(path);
+		return f.getName();
 	}
 	
 	public static List<String> separateString(String cmdStr) {

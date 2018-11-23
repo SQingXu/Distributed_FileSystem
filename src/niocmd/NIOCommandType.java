@@ -21,5 +21,10 @@ public enum NIOCommandType {
 	LIST_WORKING_DIRECTORY,
 	
 	//NameNode Feedback
-	RESULT_FEED
+	RESULT_FEED,
+	
+	//Client/DataNode Feedback
+	SEND_FILE_FEED,
+	RECEIVE_DATA_FEED
+	
 }

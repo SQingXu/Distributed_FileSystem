@@ -1,9 +1,11 @@
 package directory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.TreeMap;
 import java.util.UUID;
 
-
+import nio.DataNodeAddress;
 import niocmd.NIOCommandType;
 import niocmd.NIOCommand;
 
@@ -32,6 +34,34 @@ public class DirectoryController implements DirectoryControllerI{
 		//update parent directory information about sub-directories
 		parent.containedDirectories.put(name, dir);
 		return null;
+	}
+	
+	@Override
+	public boolean createFile(String fname, String path, List<DataNodeAddress> nodes) {
+		NameDirFileObject o;
+		try {
+			o = parsePath(path);
+		} catch (InValidPathException e) {
+			e.printStackTrace();
+			return false;
+		}
+		DFile file = new DFile(fname, (DirectoryAbst)o, nodes);
+		((DirectoryAbst)o).containedFiles.put(fname, file);
+		return true;
+	}
+	
+	@Override
+	public DFile createFilePre(String name, String path) {
+		NameDirFileObject o;
+		try {
+			o = parsePath(path);
+		} catch (InValidPathException e) {
+			e.printStackTrace();
+			return null;
+		}
+		if(o.isFile) return null;
+		DFile file = new DFile(name, (DirectoryAbst)o, new ArrayList<>());
+		return file;
 	}
 	
 	@Override
@@ -292,6 +322,8 @@ public class DirectoryController implements DirectoryControllerI{
 				feedback.args = new String[1];
 				feedback.args[0] = ret;
 			}
+		}else if(cmd.type == NIOCommandType.UPLOAD_FILE_NAME){
+			
 		}else {
 			return false;
 		}
