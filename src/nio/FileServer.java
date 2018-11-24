@@ -1,8 +1,10 @@
 package nio;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -22,6 +24,9 @@ public class FileServer implements Runnable {
 	public SocketChannel nameChannel;
 	public boolean connected = false;
 	ByteBuffer buffer;
+	
+	public String data_host = "";
+	public int data_name_port = 0;
 	
 	public FileServerReader reader;
 	public ServerWriter writer;
@@ -57,6 +62,8 @@ public class FileServer implements Runnable {
 			
 			nameChannel = SocketChannel.open();
 			if(datanode) {
+				this.data_host = host;
+				this.data_name_port = name_port;
 				nameChannel.bind(new InetSocketAddress(host, name_port));
 			}
 			nameChannel.configureBlocking(false);
@@ -122,6 +129,10 @@ public class FileServer implements Runnable {
 							System.out.println("the channel is closed");
 							reader.channelClosed(channel);
 							channel.close();
+							if(channel.equals(nameChannel)) {
+								System.out.println("name channel lost connection, need reconnection");
+								repeatedConnect();
+							}
 							continue;
 						}
 						//flip and duplicate
@@ -136,21 +147,22 @@ public class FileServer implements Runnable {
 						
 					}else if(key.isConnectable()) {
 						//only name channel
-						System.out.println("successfully connect to namenode server");
-						connected = nameChannel.finishConnect();
+						try {
+							connected = nameChannel.finishConnect();
+						}catch(Exception e) {
+							//wait for another time
+							Thread.sleep(5000);
+							repeatedConnect();
+							continue;
+						}
 						System.out.println("finishConnect operation ends");
 						if(!connected) {
 							System.err.println("error in connecting to namenode");
-							break;
+							repeatedConnect();
 						}else {
 							key.interestOps(SelectionKey.OP_READ);
-							
-							
 						}
 					}else if(key.isWritable()) {
-						if(datanode) {
-							
-						}
 					}
 					iterator.remove();
 				}
@@ -159,6 +171,52 @@ public class FileServer implements Runnable {
 			}
 			
 		}
+	}
+	
+	private void repeatedConnect() {
+		//if the exception occurs continue connecting attempts
+		//if the the connected if false due to first connect attempt, jump out
+		connected = false;
+		while(!connected) {
+			try {
+				//reopen the channel
+				nameChannel = SocketChannel.open();
+				nameChannel.configureBlocking(false);
+				if(datanode) {
+					nameChannel.bind(new InetSocketAddress(data_host, data_name_port));
+				}
+				connected = nameChannel.connect(namenode_address);
+			} catch (IOException e) {
+				System.out.println("exception occurs " + e.getClass().getName());
+				try {
+					Thread.sleep(5000);
+				} catch (InterruptedException e1) {
+					continue;
+				}
+				continue;
+			}
+			if(connected) {
+				System.out.println("successfully connected to namenode in first attempt");
+				try {
+					nameChannel.register(selector, SelectionKey.OP_READ);
+				} catch (ClosedChannelException e) {
+					e.printStackTrace();
+					connected = false;
+					continue;
+				}
+			}else {
+				System.out.println("connected at later attempt");
+				try {
+					nameChannel.register(selector, SelectionKey.OP_CONNECT);
+					break;
+				} catch (ClosedChannelException e) {
+					e.printStackTrace();
+					continue;
+				}
+			}
+			
+		}
+		
 	}
 	
 	
