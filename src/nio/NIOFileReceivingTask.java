@@ -72,8 +72,15 @@ public class NIOFileReceivingTask implements Runnable{
 			FileChannel fileChannel = aFile.getChannel();
 			
 			fileChannel.write(remaining_buffer);
+			long total_bytes = 0;
+			double prev_power = 0;
 			while(!queue.isEmpty() || receiveChannel.isOpen()) {
-				fileChannel.write(queue.take());
+				total_bytes += fileChannel.write(queue.take());
+				double current_power = Math.log(total_bytes)/Math.log(2);
+				if(current_power - prev_power > 10) {
+					System.out.println("current bytes written to file: 2^" + current_power);
+					prev_power = current_power;
+				}
 			}
 			fileChannel.close();
 			dns.containedFiles.add(rfo.file_id);

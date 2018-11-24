@@ -103,7 +103,7 @@ public class NameNodeServerReader implements Runnable{
 		feedback.args[0] = "";
 		boolean result = true;
 		if(cmd.type.equals(NIOCommandType.DOWNLOAD_FILE_NAME)) {
-			result = downloadCmdProcess(cmd, feedback);
+			result = downloadCmdProcess(cmd, feedback, channel);
 		}else if(cmd.type.equals(NIOCommandType.UPLOAD_FILE_NAME)) {
 			result = uploadCmdProcess(cmd,channel, feedback);
 		}else if(cmd.type.equals(NIOCommandType.RECEIVE_DATA_FEED)) {
@@ -161,7 +161,7 @@ public class NameNodeServerReader implements Runnable{
 		
 	}
 	
-	private boolean downloadCmdProcess(NIOCommand cmd, NIOCommand feedback) {
+	private boolean downloadCmdProcess(NIOCommand cmd, NIOCommand feedback, SocketChannel client_channel) {
 		String fname_path = cmd.args[0];
 		String dest_path = cmd.args[1];
 		DFile file = DirectoryController.instance.findFile(fname_path);
@@ -169,16 +169,26 @@ public class NameNodeServerReader implements Runnable{
 			feedback.args[0] = "the file in remote directory is not found";
 			return false;
 		}
+		System.out.println("there are " + file.containedNodes.size() + " conatin this file in total");
 		for(DataNodeAddress dna: file.containedNodes) {
 			//dna.printAddress();
 			if(server.dataNodeChannels.containsKey(dna)) {
 				//it is currently alive
 				SocketChannel channel = server.dataNodeChannels.get(dna);
+				InetSocketAddress name_client_address;
+				try {
+					name_client_address = (InetSocketAddress)client_channel.getRemoteAddress();
+				} catch (IOException e) {
+					e.printStackTrace();
+					return false;
+				}
 				//send NIOCommand to datanode
 				SendFileObject sfo = new SendFileObject(file.id, dest_path, 
-						new InetSocketAddress(cmd.args[2], Integer.parseInt(cmd.args[3])),file.name, fname_path);
+						new InetSocketAddress(cmd.args[2], Integer.parseInt(cmd.args[3])),
+						name_client_address,file.name, fname_path);
 				NIOCommand send_datanode = NIOCommandFactory.commandSendFile(sfo);
 				writer.writeToChannel(send_datanode, channel);
+				System.out.println("id: " + dna.getId() + " " + dna.getServerAddress() + " is assigned with download mission");
 				return true;
 			}
 		}
@@ -290,7 +300,18 @@ public class NameNodeServerReader implements Runnable{
 	
 	//One datanode does not contain the file
 	private boolean notContainFileCmdProcess(NIOCommand cmd, NIOCommand feedback, SocketChannel channel) {
-		String nfile_path = cmd.args[0];
+		String sfo_str = cmd.args[0];
+		Object sfo_o;
+		try {
+			sfo_o = NIOSerializer.FromString(sfo_str);
+		} catch (Exception e) {
+			return false;
+		} 
+		if(!(sfo_o instanceof SendFileObject)) {
+			return false;
+		}
+		SendFileObject sfo = (SendFileObject)sfo_o;
+		String nfile_path = sfo.nfile_path;
 		DFile file = DirectoryController.instance.findFile(nfile_path);
 		DataNodeAddress dna;
 		try {
@@ -298,9 +319,35 @@ public class NameNodeServerReader implements Runnable{
 		} catch (IOException e) {
 			return false;
 		}
+		System.out.println("id: " + dna.getId() + " " + dna.getServerAddress() + " send not contain error");
 		file.containedNodes.remove(dna);
 		//update the balance
 		server.loadBalanceStatus.substractToBalance(dna, file.size);
+		
+		
+	    SocketChannel name_client_channel = server.addrChannels.get(sfo.client_name_address);
+	    if(name_client_channel == null) {
+	    	System.err.println("the client channel is not found");
+	    	return false;
+	    }
+		if(file.containedNodes.size() == 0) {
+			//remove the file from the namenode
+			file.parentDir.containedFiles.remove(file.name);
+			feedback.args[0] = "no datanodes contain the requested file";
+			writer.writeToChannel(feedback, name_client_channel);
+			return true;
+		}
+		NIOCommand send_datanode = NIOCommandFactory.commandSendFile(sfo);
+		for(DataNodeAddress next: file.containedNodes) {
+			if(server.dataNodeChannels.containsKey(next)) {
+				//the datanode is currently alive
+				System.out.println("asking id: " + next.getId() + " " + next.getServerAddress() + " to send the file");
+				writer.writeToChannel(send_datanode, server.dataNodeChannels.get(next));
+				return true;
+			}
+		}
+		feedback.args[0] = "no datanode which contains the file is currently online, please try again later";
+		writer.writeToChannel(feedback, name_client_channel);
 		return true;
 	}
 	

@@ -54,11 +54,14 @@ public class NIOFileSendingTask implements Runnable{
 			int header_length = sendChannel.write(header_buffer);
 			//System.out.println("send header data packet: " + header_length);
 			//System.out.println("file_id: " + sfo.file_id + " file_name: " + sfo.file_name);
-			
-			while(inChannel.read(buffer) > 0) {
+			int result = inChannel.read(buffer);
+			while(result > 0) {
 				buffer.flip();
-				int length = sendChannel.write(buffer);
+				while(buffer.remaining() > 0) {
+					sendChannel.write(buffer);
+				}
 				buffer.clear();
+				result = inChannel.read(buffer);
 			}
 			//End of file
 			System.out.println("file " + sfo.file_path + " end of file sending reached");

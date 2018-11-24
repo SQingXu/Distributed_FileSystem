@@ -1,6 +1,7 @@
 package nio;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
@@ -133,10 +134,16 @@ public class FileServerReader implements Runnable, ReceivingListener{
 					//consider the case when the datanode does not contain the requested file
 					File file_test = new File(server.dns.data_dir + "/"+ sfo.file_id.toString());
 					if(!file_test.exists()) {
+						System.out.println("file not exist");
 						String[] args = new String[1];
-						args[0] = sfo.nfile_path;
+						try {
+							args[0] = NIOSerializer.toString(sfo);
+						} catch (IOException e) {
+							return false;
+						}
 						NIOCommand error = new NIOCommand(NIOCommandType.NOTCONTAIN_FILE_FEED,args);
 						server.writer.writeToChannel(error, server.nameChannel);
+						return true;
 					}
 				}
 				NIOFileSendingTask task = new NIOFileSendingTask(sfo, address, server);

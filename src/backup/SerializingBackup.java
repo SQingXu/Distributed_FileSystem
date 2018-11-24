@@ -46,6 +46,12 @@ public class SerializingBackup implements Runnable{
 	
 	private void serializeOneObject(Serializable o, String name) throws Exception{
 		String o_str = NIOSerializer.toString(o);
+		//first delete previous backup
+		File f = new File(backup_dir + "/" + name);
+		if(f.exists()) {
+			f.delete();
+		}
+		
 		RandomAccessFile file = new RandomAccessFile(backup_dir + "/" + name, "rw");
 		file.write(o_str.getBytes());
 		file.close();
@@ -65,10 +71,12 @@ public class SerializingBackup implements Runnable{
 			//load balance
 			Object balance_o = deserializeOneFile(balancefile);
 			if(!(balance_o instanceof HashMap)) {
+				System.out.println("it is not a instance of HashMap");
 				return false;
 			}
 			server.loadBalanceStatus.balanceStatus = (Map)balance_o;
 		} catch (Exception e) {
+			e.printStackTrace();
 			return false;
 		}
 		return true;

@@ -22,6 +22,8 @@ import loadbalance.LoadBalance;
 
 public class NameNodeServer implements Runnable{
 	public static NameNodeServer server = new NameNodeServer();
+	
+	//server components
 	public ServerSocketChannel serverChannel;
 	public Selector selector;
 	public NameNodeServerReader reader;
@@ -33,18 +35,23 @@ public class NameNodeServer implements Runnable{
 	public String backup_dir = "/Users/davidxu/Desktop/Java";
 	public int replication_number = 2;
 	public int changeThreshold = 1;
+	public List<DataNodeAddress> dataAddresses;
 	
+	//helper threads
 	public Thread read_thread;
 	public Thread write_thread;
 	public Thread select_thread;
 	public Thread backup_thread; 
 	
-	public List<DataNodeAddress> dataAddresses;
+	//alive datanode to opened channels
 	public Map<DataNodeAddress, SocketChannel> dataNodeChannels; 
+	//alive channel
+	public Map<InetSocketAddress, SocketChannel> addrChannels;
 	
 	protected NameNodeServer() {
 		dataAddresses = new ArrayList<>();
 		dataNodeChannels = new HashMap<>(); 
+		addrChannels = new HashMap<>();
 	}
 	
 	public void init(String host, int port) {
@@ -134,6 +141,7 @@ public class NameNodeServer implements Runnable{
 							System.out.println("datanode " + dna.getId() + " is connected via " + dna.getNameConnectedAddress());
 							dna.printAddress();
 						}
+						addrChannels.put((InetSocketAddress)clientChannel.getRemoteAddress(), clientChannel);
 						System.out.println("New Connected Channel: ");
 						System.out.println(info.getRemoteSocketAddress().toString());
 						
@@ -150,6 +158,10 @@ public class NameNodeServer implements Runnable{
 							if(dna != null) {
 								dataNodeChannels.remove(dna);
 								System.out.println("the datanode channel is removed");
+							}
+							SocketChannel removed_channel = addrChannels.remove((InetSocketAddress)channel.getRemoteAddress());
+							if(removed_channel == null) {
+								System.err.println("no correct channel is found");
 							}
 							reader.channelClosed(channel);
 							channel.close();
