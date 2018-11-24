@@ -23,17 +23,20 @@ public class DirectoryController implements DirectoryControllerI{
     	//first put default root directory into tree structure
     	root_dir = DirectoryRoot.rootDir;
     	current_dir = root_dir;
-    	directories.put(root_dir.id, root_dir);
     }
     
 	@Override
-	public Directory createDir(String name) {
+	public boolean createDir(String name, NIOCommand feedback) {
 		DirectoryAbst parent = current_dir;
+		//first to check if the directory name already exist in current directory
+		if(parent.containedDirectories.containsKey(name)|| parent.containedFiles.containsKey(name)) {
+			feedback.args[0] = "mkdir error: cannot create repeated name directory";
+			return false;
+		}
 		DirectoryAbst dir = new Directory(name,parent);
-		directories.put(dir.id, dir);
 		//update parent directory information about sub-directories
 		parent.containedDirectories.put(name, dir);
-		return null;
+		return true;
 	}
 	
 	@Override
@@ -51,15 +54,22 @@ public class DirectoryController implements DirectoryControllerI{
 	}
 	
 	@Override
-	public DFile createFilePre(String name, String path) {
+	public DFile createFilePre(String name, String path, NIOCommand feedback) {
 		NameDirFileObject o;
 		try {
 			o = parsePath(path);
 		} catch (InValidPathException e) {
-			e.printStackTrace();
+			feedback.args[0] = "upload error: invalid path";
 			return null;
 		}
-		if(o.isFile) return null;
+		if(o.isFile) {
+			feedback.args[0] = "upload error: invalid path (it is a file)";
+			return null;
+		}
+		if(((DirectoryAbst)o).containedDirectories.containsKey(name) || ((DirectoryAbst)o).containedFiles.containsKey(name)) {
+			feedback.args[0] = "upload error: repeated name";
+			return null;
+		}
 		DFile file = new DFile(name, (DirectoryAbst)o, new ArrayList<>());
 		return file;
 	}
@@ -82,11 +92,11 @@ public class DirectoryController implements DirectoryControllerI{
 	
 	
 	@Override
-	public boolean deleteDirFile(String path) {
+	public boolean deleteDirFile(String path, NIOCommand feedback) {
 		try {
 			NameDirFileObject o = parsePath(path);
 			if(!o.isFile) {
-				return deleteDir((DirectoryAbst)o);
+				return deleteDir((DirectoryAbst)o, feedback);
 			}else {
 				return deleteFile((DFile)o);
 			}
@@ -101,14 +111,14 @@ public class DirectoryController implements DirectoryControllerI{
 		return true;
 	}
 
-	private boolean deleteDir(DirectoryAbst dir) {
+	private boolean deleteDir(DirectoryAbst dir, NIOCommand feedback) {
 		try {
 			if(dir.containedDirectories.size() != 0 || dir.containedFiles.size() != 0) {
-				System.out.println("cannot remove non-empty directory");
+				feedback.args[0] = "remove error: cannot remove non-empty directory";
 				return false;
 			}
 			if(dir.root) {
-				System.out.println("cannot remove root directory");
+				feedback.args[0] = "remove error: cannot remove root directory";
 				return false;
 			}
 			//remove from tree and parent directory update current directory
@@ -124,13 +134,13 @@ public class DirectoryController implements DirectoryControllerI{
 	}
 	
 	@Override
-	public boolean moveDirFile(String dir_str, String new_path) {
+	public boolean moveDirFile(String dir_str, String new_path, NIOCommand feedback) {
 		NameDirFileObject o;
 		DirectoryAbst parent;
 		try {
 			o = parsePath(dir_str);
 		}catch(Exception e) {
-			e.printStackTrace();
+			feedback.args[0] = "move error: the directory/file you are trying to move is invalid";
 			return false;
 		}
 		
@@ -138,31 +148,39 @@ public class DirectoryController implements DirectoryControllerI{
 		try {
 			parent = parseDirPath(new_path);
 		}catch(Exception e) {
-			System.out.println("invalid destination");
+			feedback.args[0] = "move error: the destination directory is invalid";
 			return false;
 		}
 		
 		if(o.isFile) {
-			return moveFile((DFile)o,parent);
+			return moveFile((DFile)o,parent, feedback);
 		}else {
-			return moveDir((DirectoryAbst)o,parent);
+			return moveDir((DirectoryAbst)o,parent, feedback);
 		}
 	}
 	
-	private boolean moveFile(DFile file, DirectoryAbst parent) {
+	private boolean moveFile(DFile file, DirectoryAbst parent, NIOCommand feedback) {
+		if(parent.containedDirectories.containsKey(file.name) || parent.containedFiles.containsKey(file.name)) {
+			feedback.args[0] = "move error: destination directory has repeated name file/directory";
+			return false;
+		}
 		file.parentDir.containedFiles.remove(file.name);
 		parent.containedFiles.put(file.name, file);
 		return true;
 	}
 	
-	private boolean moveDir(DirectoryAbst dir, DirectoryAbst parent) {
+	private boolean moveDir(DirectoryAbst dir, DirectoryAbst parent, NIOCommand feedback) {
 		
 		if(dir.root) {
-			System.out.println("cannot move root directory");
+			feedback.args[0] = "move error: cannot move root directory";
 			return false;
 		}
 		if(DirOneContainsDirTwo(dir, parent)) {
-			System.out.println("cause cycles");
+			feedback.args[0] = "move error: move operation causes cycles";
+			return false;
+		}
+		if(parent.containedDirectories.containsKey(dir.name) || parent.containedFiles.containsKey(dir.name)) {
+			feedback.args[0] = "move error: destination directory has repeated name file/directory";
 			return false;
 		}
 		dir.parentDir.containedDirectories.remove(dir.name);
@@ -171,12 +189,14 @@ public class DirectoryController implements DirectoryControllerI{
 		return true;
 	}
 	
-	public boolean setCurrentDir(String path) {
+	@Override
+	public boolean setCurrentDir(String path, NIOCommand feedback) {
 		try {
 			DirectoryAbst dir = parseDirPath(path);
 			current_dir = dir;
 			return true;
 		}catch(Exception e) {
+			feedback.args[0] = e.getMessage();
 			return false;
 		}
 		
@@ -266,7 +286,7 @@ public class DirectoryController implements DirectoryControllerI{
 	}
 	
 	@Override
-	public boolean renameDirFile(String path, String name) {
+	public boolean renameDirFile(String path, String name, NIOCommand feedback) {
 		NameDirFileObject o;
 		try {
 			o = parsePath(path);
@@ -275,22 +295,34 @@ public class DirectoryController implements DirectoryControllerI{
 			return false;
 		}
 		if(o.isFile) {
-			return renameFile((DFile)o, name);
+			return renameFile((DFile)o, name, feedback);
 		}else {
-			return renameDir((DirectoryAbst)o, name);
+			return renameDir((DirectoryAbst)o, name, feedback);
 		}
 	}
 	
-	private boolean renameFile(DFile file, String name) {
+	private boolean renameFile(DFile file, String name, NIOCommand feedback) {
+		if(file.parentDir.containedFiles.containsKey(name) || 
+				file.parentDir.containedDirectories.containsKey(name)) {
+			//repeated file name in same directory
+			feedback.args[0] = "rename error: repeated name in same directory";
+			return false;
+		}
 		file.name = name;
 		return true;
 	}
 
 	
-	private boolean renameDir(DirectoryAbst dir, String name) {
+	private boolean renameDir(DirectoryAbst dir, String name, NIOCommand feedback) {
 		if(dir.root) {
-			System.out.println("cannot rename root dir");
+			feedback.args[0] = "rename error: cannot rename root directory";
 			return false; 
+		}
+		if(dir.parentDir.containedFiles.containsKey(name) || 
+				dir.parentDir.containedDirectories.containsKey(name)) {
+			//repeated file name in same directory
+			feedback.args[0] = "rename error: repeated name in same directory";
+			return false;
 		}
 		
 		dir.parentDir.containedDirectories.remove(dir.name);
@@ -304,20 +336,20 @@ public class DirectoryController implements DirectoryControllerI{
 		System.out.println("Command type is: " +  cmd.type.toString());
 		if(cmd.type == NIOCommandType.CREATE_DIR) {
 			//arg1: dir name 
-			createDir(cmd.args[0]);
+			createDir(cmd.args[0], feedback);
 		}else if(cmd.type == NIOCommandType.REMOVE_DIR_FILE) {
 			//arg1: dir to remove
-			return deleteDirFile(cmd.args[0]);
+			return deleteDirFile(cmd.args[0], feedback);
 		}else if(cmd.type == NIOCommandType.MOVE_DIR_FILE) {
 			//arg1: dir to move
 			//arg2: destination
-			return moveDirFile(cmd.args[0], cmd.args[1]);
+			return moveDirFile(cmd.args[0], cmd.args[1], feedback);
 		}else if(cmd.type == NIOCommandType.RENAME_DIR_FILE) {
 			//arg1: dir to rename
 			//arg2: name
-			return this.renameDirFile(cmd.args[0], cmd.args[1]);
+			return this.renameDirFile(cmd.args[0], cmd.args[1], feedback);
 		}else if(cmd.type == NIOCommandType.SET_CURRENT_DIRECTORY){
-			return this.setCurrentDir(cmd.args[0]);
+			return this.setCurrentDir(cmd.args[0], feedback);
 		}else if(cmd.type == NIOCommandType.PRINT_WORKING_DIRECTORY){
 			System.out.println(this.currentPath());
 			if(feedback != null) {

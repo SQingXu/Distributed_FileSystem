@@ -1,5 +1,7 @@
 package directory;
 
-public abstract class NameDirFileObject {
+import java.io.Serializable;
+
+public abstract class NameDirFileObject implements Serializable{
 	public boolean isFile;
 }

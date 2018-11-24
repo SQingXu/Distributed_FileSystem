@@ -129,12 +129,22 @@ public class FileServerReader implements Runnable, ReceivingListener{
 			SendFileObject sfo = NIOCommandFactory.fromCmdSendFile(cmd);
 			for(InetSocketAddress address: sfo.node_addresses) {
 				//send file to each of listed datanodes/client
+				if(server.datanode) {
+					//consider the case when the datanode does not contain the requested file
+					File file_test = new File(server.dns.data_dir + "/"+ sfo.file_id.toString());
+					if(!file_test.exists()) {
+						String[] args = new String[1];
+						args[0] = sfo.nfile_path;
+						NIOCommand error = new NIOCommand(NIOCommandType.NOTCONTAIN_FILE_FEED,args);
+						server.writer.writeToChannel(error, server.nameChannel);
+					}
+				}
 				NIOFileSendingTask task = new NIOFileSendingTask(sfo, address, server);
 				threads_pool_sending.execute(task);
 			}
 		}else if(cmd.type.equals(NIOCommandType.RESULT_FEED)) {
 			//print out the feedback
-			if(cmd.args[0] != null) {
+			if(cmd.args[0] != null || !cmd.args[0].equals("")) {
 				System.out.println(cmd.args[0]);
 			}
 		}else if(cmd.type.equals(NIOCommandType.REMOVE_FILE_DATA)) {
@@ -142,6 +152,7 @@ public class FileServerReader implements Runnable, ReceivingListener{
 				String id_str  = cmd.args[0];
 				File file = new File(server.dns.data_dir + "/" + id_str);
 				boolean res = file.delete();
+				res = !file.exists();
 				if(res) {
 					server.dns.containedFiles.remove(UUID.fromString(id_str));
 					//send remove feed back to namenode

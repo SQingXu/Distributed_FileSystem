@@ -16,16 +16,26 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import backup.SerializingBackup;
+import directory.DirectoryController;
+
 public class NameNodeServer implements Runnable{
 	public static NameNodeServer server = new NameNodeServer();
 	public ServerSocketChannel serverChannel;
 	public Selector selector;
 	public NameNodeServerReader reader;
 	public ServerWriter writer;
+	public SerializingBackup backuper;
+	
+	//configuration
+	public String backup_dir = "/Users/davidxu/Desktop/Java";
+	public int replication_number;
+	public int changeThreshold = 1;
 	
 	public Thread read_thread;
 	public Thread write_thread;
 	public Thread select_thread;
+	public Thread backup_thread; 
 	
 	public List<DataNodeAddress> dataAddresses;
 	public Map<DataNodeAddress, SocketChannel> dataNodeChannels; 
@@ -47,7 +57,16 @@ public class NameNodeServer implements Runnable{
 			read_thread = new Thread(reader);
 			read_thread.start();
 			
+			//backup
+			backuper = new SerializingBackup(backup_dir, changeThreshold);
+			backup_thread = new Thread(backuper);
+			backup_thread.start();
 			
+			//we can do backup before the server started if there is a backup file
+			System.out.println(DirectoryController.instance.root_dir.name);
+			if(!backuper.DeserializeFromFile()) {
+				System.out.println("no back up found at directory " + backup_dir);
+			}
 			
 			selector = Selector.open();
 			serverChannel = ServerSocketChannel.open();
@@ -107,7 +126,8 @@ public class NameNodeServer implements Runnable{
 						DataNodeAddress dna = containsNodeAddress((InetSocketAddress)clientChannel.getRemoteAddress());
 						if(dna != null) {
 							dataNodeChannels.put(dna, clientChannel);
-							System.out.println("this is a channel from datanode");
+							System.out.println("datanode " + dna.getId() + " is connected via " + dna.getNameConnectedAddress());
+							dna.printAddress();
 						}
 						System.out.println("New Connected Channel: ");
 						System.out.println(info.getRemoteSocketAddress().toString());

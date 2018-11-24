@@ -13,6 +13,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
+import backup.SerializingBackup;
 import directory.DFile;
 import directory.DirectoryController;
 import directory.InValidPathException;
@@ -99,25 +100,26 @@ public class NameNodeServerReader implements Runnable{
 		
 		
 		NIOCommand feedback = new NIOCommand(NIOCommandType.RESULT_FEED, new String[1]);
-		boolean result = true;
+		feedback.args[0] = "";
+		
 		if(cmd.type.equals(NIOCommandType.DOWNLOAD_FILE_NAME)) {
-			result = downloadCmdProcess(cmd, feedback);
+			downloadCmdProcess(cmd, feedback);
 		}else if(cmd.type.equals(NIOCommandType.UPLOAD_FILE_NAME)) {
-			result = uploadCmdProcess(cmd,channel, feedback);
+			uploadCmdProcess(cmd,channel, feedback);
 		}else if(cmd.type.equals(NIOCommandType.RECEIVE_DATA_FEED)) {
-			result = receiveFeedCmdProcess(cmd, feedback, channel);
+			receiveFeedCmdProcess(cmd, feedback, channel);
 		}else if(cmd.type.equals(NIOCommandType.REMOVE_DIR_FILE)) {
-			result = removeCmdProcess(cmd, feedback);
+			removeCmdProcess(cmd, feedback);
 		}else if(cmd.type.equals(NIOCommandType.REMOVE_FILE_FEED)) {
-			result = removeFeedCmdProcess(cmd, feedback, channel);
+			removeFeedCmdProcess(cmd, feedback, channel);
+		}else if(cmd.type.equals(NIOCommandType.NOTCONTAIN_FILE_FEED)){
+			notContainFileCmdProcess(cmd, feedback, channel);
 		}else {
 			opProcessor(cmd, feedback);
 		    writer.writeToChannel(feedback, channel);
 		    return;
 		}
-		if(!result) {
-			writer.writeToChannel(feedback, channel);
-		}
+		writer.writeToChannel(feedback, channel);
 		return;
 		
 	}
@@ -137,9 +139,8 @@ public class NameNodeServerReader implements Runnable{
 		//pending for the file
 		//first we still need to know if the directory is valid
 		String fname = CommandParsingHelper.getNamefromPath(flocal_path);
-		DFile pending_f = DirectoryController.instance.createFilePre(fname, name_path);
+		DFile pending_f = DirectoryController.instance.createFilePre(fname, name_path, feedback);
 		if(pending_f == null) {
-			feedback.args[0] = "The path is invalid";
 			return false;
 		}
 		
@@ -173,12 +174,13 @@ public class NameNodeServerReader implements Runnable{
 			return false;
 		}
 		for(DataNodeAddress dna: file.containedNodes) {
+			//dna.printAddress();
 			if(server.dataNodeChannels.containsKey(dna)) {
 				//it is currently alive
 				SocketChannel channel = server.dataNodeChannels.get(dna);
 				//send NIOCommand to datanode
 				SendFileObject sfo = new SendFileObject(file.id, dest_path, 
-						new InetSocketAddress(cmd.args[2], Integer.parseInt(cmd.args[3])),file.name);
+						new InetSocketAddress(cmd.args[2], Integer.parseInt(cmd.args[3])),file.name, fname_path);
 				NIOCommand send_datanode = NIOCommandFactory.commandSendFile(sfo);
 				writer.writeToChannel(send_datanode, channel);
 				return true;
@@ -241,8 +243,10 @@ public class NameNodeServerReader implements Runnable{
 		}
 		file.containedNodes.remove(dna);
 		if(file.containedNodes.size() == 0) {
-			DirectoryController.instance.deleteDirFile(cmd.args[1]);
+			DirectoryController.instance.deleteDirFile(cmd.args[1], feedback);
 		}
+		//update change for serialization backup
+		SerializingBackup.stateChange(false);
 		return true;
 	}
 	
@@ -275,12 +279,27 @@ public class NameNodeServerReader implements Runnable{
 			if(fro.left_to_receive == 0) {
 				pending_files.remove(id);
 			}
+			//update change for serialization backup
+			SerializingBackup.stateChange(false);
 			
 		} catch (Exception e) {
 			feedback.args[0] = "the exception occurs during execution";
 			e.printStackTrace();
 			return false;
 		}
+		return true;
+	}
+	
+	private boolean notContainFileCmdProcess(NIOCommand cmd, NIOCommand feedback, SocketChannel channel) {
+		String nfile_path = cmd.args[0];
+		DFile file = DirectoryController.instance.findFile(nfile_path);
+		DataNodeAddress dna;
+		try {
+			dna = server.containsNodeAddress((InetSocketAddress)channel.getRemoteAddress());
+		} catch (IOException e) {
+			return false;
+		}
+		file.containedNodes.remove(dna);
 		return true;
 	}
 	

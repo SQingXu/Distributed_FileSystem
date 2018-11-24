@@ -16,13 +16,15 @@ public class SendFileObject implements Serializable{
 	public UUID file_id = null;
 	public InetSocketAddress[] node_addresses;
 	public String file_name;
-	public SendFileObject(UUID id,String file_path,InetSocketAddress client_address, String file_name) {
+	public String nfile_path = "";
+	public SendFileObject(UUID id,String file_path,InetSocketAddress client_address, String file_name, String nfile_path) {
 		//for download
 		node_addresses = new InetSocketAddress[1];
 		this.node_addresses[0] = client_address;
 		this.file_id = id;
 		this.file_name = file_name;
 		this.file_path = file_path;
+		this.nfile_path = nfile_path;
 	}
 	public SendFileObject(UUID id, String file_path, List<DataNodeAddress> addresses) {
 		//for upload
