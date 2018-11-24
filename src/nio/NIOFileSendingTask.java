@@ -52,8 +52,8 @@ public class NIOFileSendingTask implements Runnable{
 			String header_str = FileHeaderEncodingHelper.addLengthHeader(NIOSerializer.toString(header));
 			ByteBuffer header_buffer = ByteBuffer.wrap(header_str.getBytes());
 			int header_length = sendChannel.write(header_buffer);
-			System.out.println("send header data packet: " + header_length);
-			System.out.println("file_id: " + sfo.file_id + " file_name: " + sfo.file_name);
+			//System.out.println("send header data packet: " + header_length);
+			//System.out.println("file_id: " + sfo.file_id + " file_name: " + sfo.file_name);
 			
 			while(inChannel.read(buffer) > 0) {
 				buffer.flip();
@@ -62,7 +62,6 @@ public class NIOFileSendingTask implements Runnable{
 			}
 			//End of file
 			System.out.println("file " + sfo.file_path + " end of file sending reached");
-			System.out.println("Closing");
 			sendChannel.close();
 			aFile.close();
 			

@@ -40,7 +40,7 @@ public class DirectoryController implements DirectoryControllerI{
 	}
 	
 	@Override
-	public boolean createFile(String fname, String path, List<DataNodeAddress> nodes) {
+	public boolean createFile(String fname, String path, List<DataNodeAddress> nodes, long size) {
 		NameDirFileObject o;
 		try {
 			o = parsePath(path);
@@ -48,13 +48,13 @@ public class DirectoryController implements DirectoryControllerI{
 			e.printStackTrace();
 			return false;
 		}
-		DFile file = new DFile(fname, (DirectoryAbst)o, nodes);
+		DFile file = new DFile(fname, (DirectoryAbst)o, nodes, size);
 		((DirectoryAbst)o).containedFiles.put(fname, file);
 		return true;
 	}
 	
 	@Override
-	public DFile createFilePre(String name, String path, NIOCommand feedback) {
+	public DFile createFilePre(String name, String path, NIOCommand feedback, long size) {
 		NameDirFileObject o;
 		try {
 			o = parsePath(path);
@@ -70,7 +70,7 @@ public class DirectoryController implements DirectoryControllerI{
 			feedback.args[0] = "upload error: repeated name";
 			return null;
 		}
-		DFile file = new DFile(name, (DirectoryAbst)o, new ArrayList<>());
+		DFile file = new DFile(name, (DirectoryAbst)o, new ArrayList<>(), size);
 		return file;
 	}
 	
@@ -333,7 +333,6 @@ public class DirectoryController implements DirectoryControllerI{
 
 	@Override
 	public boolean processRemoteCommand(NIOCommand cmd, NIOCommand feedback) {
-		System.out.println("Command type is: " +  cmd.type.toString());
 		if(cmd.type == NIOCommandType.CREATE_DIR) {
 			//arg1: dir name 
 			createDir(cmd.args[0], feedback);

@@ -28,8 +28,10 @@ public class CommandParsingHelper {
 		List<String> argList = separateString(cmdStr);
 		NIOCommandType cmdType = parseFirstPart(argList.get(0));
 		String[] args;
-		if((cmdType.equals(NIOCommandType.PRINT_WORKING_DIRECTORY) || cmdType.equals(NIOCommandType.LIST_WORKING_DIRECTORY) &&
-				argList.size() == 1)) {
+		if((cmdType.equals(NIOCommandType.PRINT_WORKING_DIRECTORY) 
+				|| cmdType.equals(NIOCommandType.LIST_WORKING_DIRECTORY)
+				|| cmdType.equals(NIOCommandType.LOAD_BALANCE_STATUS)
+				&& argList.size() == 1)) {
 			args = new String[1];
 			args[0] = ".";
 			return new NIOCommand(cmdType,args) ;
@@ -46,10 +48,12 @@ public class CommandParsingHelper {
 			args = new String[2];
 			if(cmdType.equals(NIOCommandType.UPLOAD_FILE_NAME)) {
 				//check for file valid
+				args = new String[3];
 				File f = new File(argList.get(1));
 				if(!f.exists() || f.isDirectory()) {
 					throw new InvalidCommandException("the local file path is invalid");
 				}
+				args[2] = Long.toString(f.length());
 			}
 			if(cmdType.equals(NIOCommandType.DOWNLOAD_FILE_NAME)) {
 				args = new String[4];
@@ -157,6 +161,8 @@ public class CommandParsingHelper {
 			return NIOCommandType.UPLOAD_FILE_NAME;
 		case "download":
 			return NIOCommandType.DOWNLOAD_FILE_NAME;
+		case "load":
+			return NIOCommandType.LOAD_BALANCE_STATUS;
 		default:
 			throw new InvalidCommandException("command not recognized");
 		}

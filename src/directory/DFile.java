@@ -10,12 +10,14 @@ public class DFile extends NameDirFileObject{
 	public DirectoryAbst parentDir;
 	public String name;
 	public final UUID id;
+	public long size;
 	public List<DataNodeAddress> containedNodes;
-	public DFile(String name, DirectoryAbst parent, List<DataNodeAddress> nodes) {
+	public DFile(String name, DirectoryAbst parent, List<DataNodeAddress> nodes, long size) {
 		id = UUID.randomUUID();
 		this.name = name;
 		this.parentDir = parent;
 		this.isFile = true;
+		this.size = size;
 		//copy the list
 		containedNodes = new ArrayList<>();
 		for(DataNodeAddress addr: nodes) {

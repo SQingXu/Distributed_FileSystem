@@ -101,23 +101,27 @@ public class NameNodeServerReader implements Runnable{
 		
 		NIOCommand feedback = new NIOCommand(NIOCommandType.RESULT_FEED, new String[1]);
 		feedback.args[0] = "";
-		
+		boolean result = true;
 		if(cmd.type.equals(NIOCommandType.DOWNLOAD_FILE_NAME)) {
-			downloadCmdProcess(cmd, feedback);
+			result = downloadCmdProcess(cmd, feedback);
 		}else if(cmd.type.equals(NIOCommandType.UPLOAD_FILE_NAME)) {
-			uploadCmdProcess(cmd,channel, feedback);
+			result = uploadCmdProcess(cmd,channel, feedback);
 		}else if(cmd.type.equals(NIOCommandType.RECEIVE_DATA_FEED)) {
-			receiveFeedCmdProcess(cmd, feedback, channel);
+			result = receiveFeedCmdProcess(cmd, feedback, channel);
 		}else if(cmd.type.equals(NIOCommandType.REMOVE_DIR_FILE)) {
-			removeCmdProcess(cmd, feedback);
+			result = removeCmdProcess(cmd, feedback);
 		}else if(cmd.type.equals(NIOCommandType.REMOVE_FILE_FEED)) {
-			removeFeedCmdProcess(cmd, feedback, channel);
+			result = removeFeedCmdProcess(cmd, feedback, channel);
 		}else if(cmd.type.equals(NIOCommandType.NOTCONTAIN_FILE_FEED)){
-			notContainFileCmdProcess(cmd, feedback, channel);
+			result = notContainFileCmdProcess(cmd, feedback, channel);
+		}else if(cmd.type.equals(NIOCommandType.LOAD_BALANCE_STATUS)){
+			result = loadBalanceCmdProcess(cmd, feedback);
 		}else {
-			opProcessor(cmd, feedback);
-		    writer.writeToChannel(feedback, channel);
-		    return;
+			result = opProcessor(cmd, feedback);
+		}
+		if(result && SerializingBackup.stateChangeOperation(cmd.type)) {
+			//update change for serialization backup
+			SerializingBackup.stateChange(false);
 		}
 		writer.writeToChannel(feedback, channel);
 		return;
@@ -134,27 +138,19 @@ public class NameNodeServerReader implements Runnable{
 	private boolean uploadCmdProcess(NIOCommand cmd, SocketChannel channel, NIOCommand feedback) {
 		String flocal_path = cmd.args[0];
 		String name_path = cmd.args[1];
+		long fsize = Long.parseLong(cmd.args[2]);
 		
 		//cannot update directory until actual file data finish uploading
 		//pending for the file
 		//first we still need to know if the directory is valid
 		String fname = CommandParsingHelper.getNamefromPath(flocal_path);
-		DFile pending_f = DirectoryController.instance.createFilePre(fname, name_path, feedback);
+		DFile pending_f = DirectoryController.instance.createFilePre(fname, name_path, feedback, fsize);
 		if(pending_f == null) {
 			return false;
 		}
 		
 		//load balance
-		List<DataNodeAddress> file_addrs = new ArrayList<DataNodeAddress>();
-		List<DataNodeAddress> addresses = NameNodeServer.server.dataAddresses;
-		DataNodeAddress node1 = addresses.get(0);
-		DataNodeAddress node2 = addresses.get(1);
-		if(node1 != null) {
-			file_addrs.add(node1);
-		}
-		if(node2 != null) {
-			file_addrs.add(node2);
-		}
+		List<DataNodeAddress> file_addrs = server.loadBalanceStatus.getNodes();
 		pending_files.put(pending_f.id, new DFileReceive(pending_f,2));
 		
 		//send NIOCommand back to client
@@ -223,6 +219,7 @@ public class NameNodeServerReader implements Runnable{
 		return true;
 	}
 	
+	//One DataNode removed one file
 	private boolean removeFeedCmdProcess(NIOCommand cmd, NIOCommand feedback, SocketChannel channel) {
 		InetSocketAddress connected_addr;
 		try {
@@ -245,11 +242,12 @@ public class NameNodeServerReader implements Runnable{
 		if(file.containedNodes.size() == 0) {
 			DirectoryController.instance.deleteDirFile(cmd.args[1], feedback);
 		}
-		//update change for serialization backup
-		SerializingBackup.stateChange(false);
+		//update the balance
+		server.loadBalanceStatus.substractToBalance(dna, file.size);
 		return true;
 	}
 	
+	//One datanode received a uploaded file
 	private boolean receiveFeedCmdProcess(NIOCommand cmd, NIOCommand feedback, SocketChannel channel) {
 		try {
 			//first check the info is from valid datanode server source
@@ -279,17 +277,18 @@ public class NameNodeServerReader implements Runnable{
 			if(fro.left_to_receive == 0) {
 				pending_files.remove(id);
 			}
-			//update change for serialization backup
-			SerializingBackup.stateChange(false);
-			
+			//update the balance
+			server.loadBalanceStatus.addToBalance(dna, file.size);
 		} catch (Exception e) {
 			feedback.args[0] = "the exception occurs during execution";
 			e.printStackTrace();
 			return false;
 		}
+		
 		return true;
 	}
 	
+	//One datanode does not contain the file
 	private boolean notContainFileCmdProcess(NIOCommand cmd, NIOCommand feedback, SocketChannel channel) {
 		String nfile_path = cmd.args[0];
 		DFile file = DirectoryController.instance.findFile(nfile_path);
@@ -300,6 +299,13 @@ public class NameNodeServerReader implements Runnable{
 			return false;
 		}
 		file.containedNodes.remove(dna);
+		//update the balance
+		server.loadBalanceStatus.substractToBalance(dna, file.size);
+		return true;
+	}
+	
+	private boolean loadBalanceCmdProcess(NIOCommand cmd, NIOCommand feedback) {
+		feedback.args[0] = server.loadBalanceStatus.balanceStatusStr();
 		return true;
 	}
 	

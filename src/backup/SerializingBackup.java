@@ -1,32 +1,41 @@
 package backup;
 import java.io.File;
 import java.io.RandomAccessFile;
+import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
+import java.util.HashMap;
+import java.util.Map;
 
 import directory.DirectoryAbst;
 import directory.DirectoryController;
+import loadbalance.LoadBalance;
 import nio.NIOSerializer;
+import nio.NameNodeServer;
+import niocmd.NIOCommandType;
 
 public class SerializingBackup implements Runnable{
 	public String backup_dir;
 	public static int changedObjects = 0;
 	public int changeThreshold;
+	
+	public NameNodeServer server;
+	
 	String rootfile = "directory_data";
-	public SerializingBackup(String dir, int threshold) {
+	String balancefile = "balance_data";
+	public SerializingBackup(String dir, int threshold, NameNodeServer server) {
 		this.backup_dir = dir;
 		this.changeThreshold = threshold;
+		this.server = server;
 	}
 	//This class is solely for backup data on the namenode
 	public boolean SerializeNameNode() {
-		String root_str;
-		RandomAccessFile file;
 		try {
-			root_str = NIOSerializer.toString(DirectoryController.instance.root_dir);
-			file = new RandomAccessFile(backup_dir + "/" + rootfile, "rw");
-			file.write(root_str.getBytes());
-			file.close();
+			//root_directory
+			serializeOneObject(DirectoryController.instance.root_dir, rootfile);
+			//load_balance
+			serializeOneObject((HashMap)server.loadBalanceStatus.balanceStatus, balancefile);
 		} catch (Exception e) {
 			e.printStackTrace();
 			return false;
@@ -34,25 +43,57 @@ public class SerializingBackup implements Runnable{
 		return true;
 	}
 	
+	
+	private void serializeOneObject(Serializable o, String name) throws Exception{
+		String o_str = NIOSerializer.toString(o);
+		RandomAccessFile file = new RandomAccessFile(backup_dir + "/" + name, "rw");
+		file.write(o_str.getBytes());
+		file.close();
+	}
+	
 	public boolean DeserializeFromFile() {
-		String path = backup_dir + "/" + rootfile;
 		try {
-			String root_str = new String(Files.readAllBytes(Paths.get(path)));
-			Object root_o = NIOSerializer.FromString(root_str);
+			//root directory
+			Object root_o = deserializeOneFile(rootfile);
 			if(!(root_o instanceof DirectoryAbst)) {
 				return false;
 			}
-			File file = new File(path);
-			SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
-			System.out.println("backup last modified time: " + sdf.format(file.lastModified()));
-			
 			DirectoryAbst root_dir = (DirectoryAbst)root_o;
 			DirectoryController.instance.root_dir = root_dir;
 			DirectoryController.instance.current_dir = root_dir;
+			
+			//load balance
+			Object balance_o = deserializeOneFile(balancefile);
+			if(!(balance_o instanceof HashMap)) {
+				return false;
+			}
+			server.loadBalanceStatus.balanceStatus = (Map)balance_o;
 		} catch (Exception e) {
 			return false;
 		}
 		return true;
+	}
+	
+	private Object deserializeOneFile(String name) throws Exception{
+		String path = backup_dir + "/" + name;
+		File file = new File(path);
+		SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
+		System.out.println(name + " backup last modified time: " + sdf.format(file.lastModified()));
+		String o_str = new String(Files.readAllBytes(Paths.get(path)));
+		Object o = NIOSerializer.FromString(o_str);
+		return o;
+	}
+	
+	public static boolean stateChangeOperation(NIOCommandType type) {
+		if(type.equals(NIOCommandType.CREATE_DIR) 
+				|| type.equals(NIOCommandType.MOVE_DIR_FILE)
+				|| type.equals(NIOCommandType.RECEIVE_DATA_FEED) 
+				|| type.equals(NIOCommandType.REMOVE_FILE_FEED)
+				|| type.equals(NIOCommandType.RENAME_DIR_FILE)
+				|| type.equals(NIOCommandType.NOTCONTAIN_FILE_FEED)) {
+			return true;
+		}
+		return false;
 	}
 	
 	public static synchronized void stateChange(boolean reset) {

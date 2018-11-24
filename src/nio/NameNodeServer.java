@@ -18,6 +18,7 @@ import java.util.Map;
 
 import backup.SerializingBackup;
 import directory.DirectoryController;
+import loadbalance.LoadBalance;
 
 public class NameNodeServer implements Runnable{
 	public static NameNodeServer server = new NameNodeServer();
@@ -26,10 +27,11 @@ public class NameNodeServer implements Runnable{
 	public NameNodeServerReader reader;
 	public ServerWriter writer;
 	public SerializingBackup backuper;
+	public LoadBalance loadBalanceStatus;
 	
 	//configuration
 	public String backup_dir = "/Users/davidxu/Desktop/Java";
-	public int replication_number;
+	public int replication_number = 2;
 	public int changeThreshold = 1;
 	
 	public Thread read_thread;
@@ -42,7 +44,7 @@ public class NameNodeServer implements Runnable{
 	
 	protected NameNodeServer() {
 		dataAddresses = new ArrayList<>();
-		dataNodeChannels = new HashMap<>();
+		dataNodeChannels = new HashMap<>(); 
 	}
 	
 	public void init(String host, int port) {
@@ -57,8 +59,11 @@ public class NameNodeServer implements Runnable{
 			read_thread = new Thread(reader);
 			read_thread.start();
 			
+			//loadbalance
+			loadBalanceStatus = new LoadBalance(server);
+			
 			//backup
-			backuper = new SerializingBackup(backup_dir, changeThreshold);
+			backuper = new SerializingBackup(backup_dir, changeThreshold, server);
 			backup_thread = new Thread(backuper);
 			backup_thread.start();
 			

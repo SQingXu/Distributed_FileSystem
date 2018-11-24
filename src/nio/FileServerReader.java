@@ -144,7 +144,7 @@ public class FileServerReader implements Runnable, ReceivingListener{
 			}
 		}else if(cmd.type.equals(NIOCommandType.RESULT_FEED)) {
 			//print out the feedback
-			if(cmd.args[0] != null || !cmd.args[0].equals("")) {
+			if(cmd.args[0] != null && !cmd.args[0].equals("")) {
 				System.out.println(cmd.args[0]);
 			}
 		}else if(cmd.type.equals(NIOCommandType.REMOVE_FILE_DATA)) {
